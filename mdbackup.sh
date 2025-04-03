@@ -56,10 +56,8 @@ check_and_install_dependencies() {
             echo "Installing $dep..."
             if command -v apt-get &> /dev/null; then
                 sudo apt-get install -y "$dep"
-            elif command -v yum &> /dev/null; then
-                sudo yum install -y "$dep"
             else
-                echo "Package manager not supported. Please install $dep manually."
+                echo "This script is optimized for Debian-based systems. Please install $dep manually."
                 exit 1
             fi
         done

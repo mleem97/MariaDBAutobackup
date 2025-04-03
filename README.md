@@ -36,7 +36,7 @@ MariaDBAutobackup ist ein Shell-Skript, das entwickelt wurde, um regelmäßige B
     chmod +x mdbackup.sh
     ```
 
-4. Installiere das Skript systemweit:
+4. Führe das Skript mit dem folgenden Befehl aus:
 
     ```sh
     sudo ./mdbackup.sh install
