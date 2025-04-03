@@ -10,6 +10,16 @@ show_help() {
     echo "  help        Display this help message"
 }
 
+# Funktion zur Überprüfung, ob MariaDB oder MySQL installiert ist
+check_mariadb_mysql_installed() {
+    if command -v mysql &> /dev/null; then
+        echo "MySQL/MariaDB is installed."
+    else
+        echo "MySQL/MariaDB is not installed. Please install it first."
+        exit 1
+    fi
+}
+
 # Funktion zur Erstellung eines Backups
 backup() {
     echo "Creating backup..."
@@ -42,7 +52,34 @@ restore() {
     echo "Backup restored from $BACKUP_DIR"
 }
 
+# Funktion zur Installation und Konfiguration
+install() {
+    read -p "Do you want to install the mdbackup application? (yes/no): " install_choice
+    if [ "$install_choice" != "yes" ]; then
+        echo "Installation aborted."
+        exit 0
+    fi
+
+    check_mariadb_mysql_installed
+
+    read -p "Is this being executed on a remote device? (yes/no): " remote_choice
+    if [ "$remote_choice" == "yes" ]; then
+        read -p "Enter the IP address of the remote device: " remote_ip
+        read -p "Enter the username for the remote device: " remote_user
+        read -s -p "Enter the password for the remote device: " remote_pass
+        echo
+        # Hier können Sie SSH oder andere Methoden verwenden, um auf das entfernte Gerät zuzugreifen und die Installation durchzuführen
+        echo "Remote installation not implemented in this script."
+    else
+        echo "Local installation completed."
+    fi
+}
+
 # Hauptprogramm
+if [ ! -f /usr/local/bin/mdbackup ]; then
+    install
+fi
+
 case "$1" in
     backup)
         backup
