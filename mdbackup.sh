@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Note: Ensure the script has executable permissions before running:
+#       chmod +x mdbackup.sh
+#       ./mdbackup.sh [command]
+
 # Funktion zur Anzeige der Hilfe
 show_help() {
     echo "Usage: mdbackup [command]"
