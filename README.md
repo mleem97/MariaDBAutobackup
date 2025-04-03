@@ -69,7 +69,7 @@ Füge die folgende Zeile hinzu, um das Skript täglich um 2:00 Uhr auszuführen:
 0 2 * * * /pfad/zu/mdbackup.sh
 ```
 ## Beitragende
-mleem97
+[mleem97](https://github.com/mleem97)
 
 ## Lizenz
 Dieses Projekt ist unter der GNU-GPL-Lizenz lizenziert. Siehe die LICENSE-Datei für Details.
