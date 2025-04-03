@@ -92,6 +92,9 @@ Dies erstellt einen täglichen Cron-Job, der das Backup um 2:00 Uhr ausführt.
 - **Testmodus**: Führt Befehle im Testmodus aus, ohne Änderungen vorzunehmen.
 - **Remote-Installation**: Unterstützt die Installation auf entfernten Geräten über SSH.
 
+## Hinweise
+- Das Script wurde stand 03.04.25 noch nicht getestet. Bitte nutzt die **"Issues"** um Fehler zu melden. 
+
 ## Beitragende
 
 [mleem97](https://github.com/mleem97)
