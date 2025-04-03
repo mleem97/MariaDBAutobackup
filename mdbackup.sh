@@ -68,7 +68,7 @@ install() {
         read -p "Enter the username for the remote device: " remote_user
         read -s -p "Enter the password for the remote device: " remote_pass
         echo
-        # Hier können Sie SSH oder andere Methoden verwenden, um auf das entfernte Gerät zuzugreifen und die Installation durchzuführen
+        # Implementierung Verbindung zum SSH des DB servers oder so.
         echo "Remote installation not implemented in this script."
     else
         echo "Local installation completed."
