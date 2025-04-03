@@ -31,6 +31,45 @@ check_dependencies() {
     done
 }
 
+# Funktion zur Überprüfung und Installation von Abhängigkeiten
+check_and_install_dependencies() {
+    local dependencies=("mysqldump" "gzip" "gunzip")
+    local missing_dependencies=()
+
+    for dep in "${dependencies[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            missing_dependencies+=("$dep")
+        fi
+    done
+
+    if [ ${#missing_dependencies[@]} -eq 0 ]; then
+        echo "All dependencies are already installed."
+        return
+    fi
+
+    echo "Dependencies are not fulfilled: ${missing_dependencies[*]}"
+    read -p "Do you want to install them now? [Y/n]: " install_choice
+    install_choice=${install_choice:-Y}
+
+    if [[ "$install_choice" =~ ^[Yy]$ ]]; then
+        for dep in "${missing_dependencies[@]}"; do
+            echo "Installing $dep..."
+            if command -v apt-get &> /dev/null; then
+                sudo apt-get install -y "$dep"
+            elif command -v yum &> /dev/null; then
+                sudo yum install -y "$dep"
+            else
+                echo "Package manager not supported. Please install $dep manually."
+                exit 1
+            fi
+        done
+        echo "All missing dependencies have been installed."
+    else
+        echo "Dependencies were not installed. Exiting."
+        exit 1
+    fi
+}
+
 # Funktion zur Installation des Skripts
 install_script() {
     local script_path="/usr/local/bin/mdbackup"
@@ -182,7 +221,7 @@ install() {
     fi
 
     check_mariadb_mysql_installed
-    check_dependencies
+    check_and_install_dependencies
     install_script
 
     read -p "Is this being executed on a remote device? (yes/no): " remote_choice
