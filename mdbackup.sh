@@ -11,6 +11,7 @@ show_help() {
     echo "Commands:"
     echo "  backup      Create a backup of MariaDB database"
     echo "  restore     Restore a MariaDB database from a backup"
+    echo "  configure   Configure mdbackup settings"
     echo "  help        Display this help message"
 }
 
@@ -87,8 +88,11 @@ install_script() {
 
 # Load configuration file if it exists
 CONFIG_FILE="/etc/mdbackup.conf"
+LOCAL_CONFIG_FILE="$(dirname "$0")/mdbackup.conf"
 if [ -f "$CONFIG_FILE" ]; then
     source "$CONFIG_FILE"
+elif [ -f "$LOCAL_CONFIG_FILE" ]; then
+    source "$LOCAL_CONFIG_FILE"
 fi
 
 # Default values if not set in configuration
@@ -226,6 +230,10 @@ install() {
     check_and_install_dependencies
     install_script
 
+    # Mandatory configuration during installation
+    echo "Configuration is required during installation."
+    configure
+
     read -p "Is this being executed on a remote device? (yes/no): " remote_choice
     if [ "$remote_choice" == "yes" ]; then
         read -p "Enter the IP address of the remote device: " remote_ip
@@ -250,6 +258,24 @@ install() {
     fi
 }
 
+# Funktion zur Konfiguration
+configure() {
+    echo "Configuring mdbackup..."
+    local config_file="${LOCAL_CONFIG_FILE:-/etc/mdbackup.conf}"
+    echo "Configuration file: $config_file"
+
+    read -p "Enter backup directory [default: /var/lib/mysql]: " backup_dir
+    backup_dir=${backup_dir:-"/var/lib/mysql"}
+
+    read -p "Enter log file path [default: /var/log/mdbackup.log]: " log_file
+    log_file=${log_file:-"/var/log/mdbackup.log"}
+
+    echo "DEFAULT_BACKUP_DIR=\"$backup_dir\"" > "$config_file"
+    echo "LOG_FILE=\"$log_file\"" >> "$config_file"
+
+    echo "Configuration saved to $config_file."
+}
+
 # Validierung der Konfiguration
 validate_config
 
@@ -264,6 +290,9 @@ case "$1" in
         ;;
     restore)
         restore "$2"
+        ;;
+    configure)
+        configure
         ;;
     help|*)
         show_help
