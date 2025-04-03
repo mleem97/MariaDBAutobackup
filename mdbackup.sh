@@ -20,16 +20,24 @@ check_mariadb_mysql_installed() {
     fi
 }
 
+# Default backup directory (can be overridden by environment variable)
+DEFAULT_BACKUP_DIR="/var/lib/mysql"
+BACKUP_DIR=${BACKUP_DIR_OVERRIDE:-$DEFAULT_BACKUP_DIR}
+
+# Log file for operations
+LOG_FILE="/var/log/mdbackup.log"
+
 # Funktion zur Erstellung eines Backups
 backup() {
     echo "Creating backup..."
-    TIMESTAMP=$(date +"%F")
-    BACKUP_DIR="/var/lib/mysql/backup-$TIMESTAMP"
-    mkdir -p "$BACKUP_DIR"
-    mysqldump --all-databases > "$BACKUP_DIR/all-databases.sql"
-    chown -R mysql:mysql "$BACKUP_DIR"
-    chmod -R 755 "$BACKUP_DIR"
-    echo "Backup created at $BACKUP_DIR"
+    TIMESTAMP=$(date +"%F_%T")
+    BACKUP_PATH="$BACKUP_DIR/backup-$TIMESTAMP"
+    mkdir -p "$BACKUP_PATH"
+    mysqldump --all-databases > "$BACKUP_PATH/all-databases.sql"
+    gzip "$BACKUP_PATH/all-databases.sql"
+    chown -R mysql:mysql "$BACKUP_PATH"
+    chmod -R 755 "$BACKUP_PATH"
+    echo "Backup created at $BACKUP_PATH" | tee -a "$LOG_FILE"
 }
 
 # Funktion zur Wiederherstellung eines Backups
@@ -39,17 +47,17 @@ restore() {
         exit 1
     fi
 
-    BACKUP_DIR=$1
-    if [ ! -f "$BACKUP_DIR/all-databases.sql" ]; then
-        echo "Backup file not found in the specified directory."
+    BACKUP_PATH=$1
+    if [ ! -f "$BACKUP_PATH/all-databases.sql.gz" ]; then
+        echo "Compressed backup file not found in the specified directory."
         exit 1
     fi
 
-    echo "Restoring backup from $BACKUP_DIR..."
-    mysql < "$BACKUP_DIR/all-databases.sql"
+    echo "Restoring backup from $BACKUP_PATH..."
+    gunzip -c "$BACKUP_PATH/all-databases.sql.gz" | mysql
     chown -R mysql:mysql /var/lib/mysql
     chmod -R 755 /var/lib/mysql
-    echo "Backup restored from $BACKUP_DIR"
+    echo "Backup restored from $BACKUP_PATH" | tee -a "$LOG_FILE"
 }
 
 # Funktion zur Installation und Konfiguration
