@@ -4,6 +4,9 @@
 #       chmod +x mdbackup.sh
 #       ./mdbackup.sh [command]
 
+VERSION="1.0.0" # Current script version
+REMOTE_VERSION_URL="https://raw.githubusercontent.com/your-repo/MariaDBAutobackup/main/version.txt"
+
 # Funktion zur Anzeige der Hilfe
 show_help() {
     echo "Usage: mdbackup [command]"
@@ -12,6 +15,9 @@ show_help() {
     echo "  backup      Create a backup of MariaDB database"
     echo "  restore     Restore a MariaDB database from a backup"
     echo "  configure   Configure mdbackup settings"
+    echo "  update      Update the mdbackup script to the latest version"
+    echo "  version     Show the current version of mdbackup"
+    echo "  check-updates Check for updates to the mdbackup script"
     echo "  help        Display this help message"
 }
 
@@ -73,17 +79,21 @@ check_and_install_dependencies() {
     fi
 }
 
-# Funktion zur Installation des Skripts
+# Funktion zur Installation des Skripts (mit Update-Mechanismus)
 install_script() {
     local script_path="/usr/local/bin/mdbackup"
-    if [ ! -f "$script_path" ]; then
-        echo "Installing mdbackup script to $script_path..."
-        cp "$0" "$script_path"
-        chmod +x "$script_path"
-        echo "Installation completed."
-    else
+    if [ -f "$script_path" ]; then
         echo "mdbackup script is already installed at $script_path."
+        read -p "Do you want to overwrite the existing installation? (yes/no): " overwrite_choice
+        if [ "$overwrite_choice" != "yes" ]; then
+            echo "Installation aborted."
+            exit 0
+        fi
     fi
+    echo "Installing mdbackup script to $script_path..."
+    cp "$0" "$script_path"
+    chmod +x "$script_path"
+    echo "Installation completed."
 }
 
 # Load configuration file if it exists
@@ -276,6 +286,41 @@ configure() {
     echo "Configuration saved to $config_file."
 }
 
+# Funktion zur Anzeige der aktuellen Version
+show_version() {
+    echo "mdbackup version: $VERSION"
+}
+
+# Funktion zur Überprüfung auf Updates
+check_for_updates() {
+    echo "Checking for updates..."
+    if command -v curl &> /dev/null; then
+        remote_version=$(curl -s "$REMOTE_VERSION_URL")
+        if [ "$remote_version" != "$VERSION" ]; then
+            echo "A new version ($remote_version) is available. Current version: $VERSION."
+            read -p "Do you want to update now? (yes/no): " update_choice
+            if [ "$update_choice" == "yes" ]; then
+                update_script
+            else
+                echo "Update skipped."
+            fi
+        else
+            echo "You are using the latest version ($VERSION)."
+        fi
+    else
+        echo "Error: curl is not installed. Unable to check for updates."
+    fi
+}
+
+# Funktion zum Aktualisieren des Skripts
+update_script() {
+    local script_path="/usr/local/bin/mdbackup"
+    echo "Updating mdbackup script..."
+    cp "$0" "$script_path"
+    chmod +x "$script_path"
+    echo "mdbackup script updated successfully to version $VERSION."
+}
+
 # Validierung der Konfiguration
 validate_config
 
@@ -293,6 +338,15 @@ case "$1" in
         ;;
     configure)
         configure
+        ;;
+    update)
+        update_script
+        ;;
+    version)
+        show_version
+        ;;
+    check-updates)
+        check_for_updates
         ;;
     help|*)
         show_help
