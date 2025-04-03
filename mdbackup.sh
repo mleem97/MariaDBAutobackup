@@ -55,6 +55,54 @@ DEFAULT_BACKUP_DIR=${DEFAULT_BACKUP_DIR:-"/var/lib/mysql"}
 BACKUP_DIR=${BACKUP_DIR_OVERRIDE:-$DEFAULT_BACKUP_DIR}
 LOG_FILE=${LOG_FILE:-"/var/log/mdbackup.log"}
 
+# Funktion zur Fehlerbehandlung
+handle_error() {
+    echo "Error: $1" | tee -a "$LOG_FILE"
+    exit 1
+}
+
+# Funktion zur Validierung der Konfiguration
+validate_config() {
+    if [ -z "$BACKUP_DIR" ] || [ -z "$LOG_FILE" ]; then
+        handle_error "Configuration is invalid. Please check $CONFIG_FILE."
+    fi
+}
+
+# Funktion zur Verschlüsselung von Backups
+encrypt_backup() {
+    read -p "Do you want to encrypt the backup? (yes/no): " encrypt_choice
+    if [ "$encrypt_choice" == "yes" ]; then
+        read -p "Enter the recipient's GPG key ID: " gpg_key
+        for file in "$BACKUP_PATH"/*.sql.gz; do
+            gpg --encrypt --recipient "$gpg_key" "$file" && rm "$file"
+            echo "Backup file $file encrypted." | tee -a "$LOG_FILE"
+        done
+    fi
+}
+
+# Funktion zur Entschlüsselung von Backups
+decrypt_backup() {
+    read -p "Do you need to decrypt the backup? (yes/no): " decrypt_choice
+    if [ "$decrypt_choice" == "yes" ]; then
+        for file in "$BACKUP_PATH"/*.sql.gz.gpg; do
+            gpg --decrypt "$file" > "${file%.gpg}" && rm "$file"
+            echo "Backup file $file decrypted." | tee -a "$LOG_FILE"
+        done
+    fi
+}
+
+# Testmodus aktivieren
+TEST_MODE=false
+
+# Wrapper für Befehle im Testmodus
+run_command() {
+    if [ "$TEST_MODE" == "true" ]; then
+        echo "[TEST MODE] $*"
+    else
+        eval "$@"
+    fi
+}
+
 # Funktion zur Bereinigung alter Backups
 cleanup_old_backups() {
     echo "Cleaning up backups older than 30 days in $BACKUP_DIR..." | tee -a "$LOG_FILE"
@@ -69,7 +117,7 @@ setup_cron_job() {
     echo "Cron job created for daily backups at 2 AM." | tee -a "$LOG_FILE"
 }
 
-# Erweiterte Backup-Funktion mit Logging und Bereinigung
+# Erweiterte Backup-Funktion mit Verschlüsselung
 backup() {
     echo "Creating backup..." | tee -a "$LOG_FILE"
     TIMESTAMP=$(date +"%F_%T")
@@ -78,32 +126,25 @@ backup() {
 
     read -p "Do you want to backup all databases? (yes/no): " all_dbs
     if [ "$all_dbs" == "yes" ]; then
-        if mysqldump --all-databases > "$BACKUP_PATH/all-databases.sql"; then
-            echo "Backup of all databases successful." | tee -a "$LOG_FILE"
-        else
-            echo "Backup failed!" | tee -a "$LOG_FILE"
-            exit 1
-        fi
+        run_command mysqldump --all-databases > "$BACKUP_PATH/all-databases.sql" || handle_error "Backup failed!"
     else
         read -p "Enter the database name to backup: " db_name
-        if mysqldump "$db_name" > "$BACKUP_PATH/$db_name.sql"; then
-            echo "Backup of database '$db_name' successful." | tee -a "$LOG_FILE"
-        else
-            echo "Backup failed!" | tee -a "$LOG_FILE"
-            exit 1
-        fi
+        run_command mysqldump "$db_name" > "$BACKUP_PATH/$db_name.sql" || handle_error "Backup failed!"
     fi
 
-    gzip "$BACKUP_PATH"/*.sql
+    run_command gzip "$BACKUP_PATH"/*.sql
     chown -R mysql:mysql "$BACKUP_PATH"
     chmod -R 755 "$BACKUP_PATH"
     echo "Backup created at $BACKUP_PATH" | tee -a "$LOG_FILE"
+
+    # Optional: Encrypt the backup
+    encrypt_backup
 
     # Cleanup old backups
     cleanup_old_backups
 }
 
-# Erweiterte Restore-Funktion mit Logging
+# Erweiterte Restore-Funktion mit Entschlüsselung
 restore() {
     echo "Available backups in $BACKUP_DIR:" | tee -a "$LOG_FILE"
     ls "$BACKUP_DIR" | grep "backup-" || { echo "No backups found." | tee -a "$LOG_FILE"; exit 1; }
@@ -112,23 +153,19 @@ restore() {
     BACKUP_PATH="$BACKUP_DIR/$backup_folder"
 
     if [ ! -d "$BACKUP_PATH" ]; then
-        echo "Backup folder not found." | tee -a "$LOG_FILE"
-        exit 1
+        handle_error "Backup folder not found."
     fi
 
-    if [ ! -f "$BACKUP_PATH/all-databases.sql.gz" ] && [ ! -f "$BACKUP_PATH/*.sql.gz" ]; then
-        echo "No valid backup files found in the specified directory." | tee -a "$LOG_FILE"
-        exit 1
+    if [ ! -f "$BACKUP_PATH/all-databases.sql.gz" ] && [ ! -f "$BACKUP_PATH/*.sql.gz.gpg" ]; then
+        handle_error "No valid backup files found in the specified directory."
     fi
+
+    # Optional: Decrypt the backup
+    decrypt_backup
 
     echo "Restoring backup from $BACKUP_PATH..." | tee -a "$LOG_FILE"
     for file in "$BACKUP_PATH"/*.sql.gz; do
-        if gunzip -c "$file" | mysql; then
-            echo "Restored from $file successfully." | tee -a "$LOG_FILE"
-        else
-            echo "Restore failed for $file!" | tee -a "$LOG_FILE"
-            exit 1
-        fi
+        run_command gunzip -c "$file" | mysql || handle_error "Restore failed for $file!"
     done
 
     chown -R mysql:mysql /var/lib/mysql
@@ -171,6 +208,9 @@ install() {
         echo "Local installation completed."
     fi
 }
+
+# Validierung der Konfiguration
+validate_config
 
 # Hauptprogramm
 if [ ! -f /usr/local/bin/mdbackup ]; then
