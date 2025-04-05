@@ -5,7 +5,7 @@
 #       ./mdbackup.sh [command]
 
 VERSION="1.1.0" # Aktualisierte Skriptversion
-REMOTE_VERSION_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/main/version.txt"
+REMOTE_VERSION_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/refs/heads/main/version.txt"
 
 # Konfigurationsdatei
 CONFIG_FILE="/etc/mdbackup.conf"
@@ -253,30 +253,69 @@ cleanup_old_backups() {
     echo "Old backups cleaned up." | tee -a "$LOG_FILE"
 }
 
-# Erweiterte Backup-Funktion mit Verschlüsselung
-backup() {
-    echo "Creating backup..." | tee -a "$LOG_FILE"
+# Funktion zur Durchführung von Backups (vollständig, differenziell, inkrementell)
+perform_backup() {
+    local backup_type=$1
+    local last_full_backup="$(find "$BACKUP_DIR" -type d -name "backup-full-*" | sort | tail -n 1)"
+    local last_backup="$(find "$BACKUP_DIR" -type d -name "backup-*" | sort | tail -n 1)"
+
     TIMESTAMP=$(date +"%F_%T")
-    BACKUP_PATH="$BACKUP_DIR/backup-$TIMESTAMP"
+    BACKUP_PATH="$BACKUP_DIR/backup-$backup_type-$TIMESTAMP"
     mkdir -p "$BACKUP_PATH"
 
-    read -p "Do you want to backup all databases? (yes/no): " all_dbs
-    if [ "$all_dbs" == "yes" ]; then
-        run_command mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" --all-databases > "$BACKUP_PATH/all-databases.sql" || handle_error "Backup failed!"
-    else
-        read -p "Enter the database name to backup: " db_name
-        run_command mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" "$db_name" > "$BACKUP_PATH/$db_name.sql" || handle_error "Backup failed!"
-    fi
-    run_command gzip -"$GZIP_COMPRESSION_LEVEL" "$BACKUP_PATH"/*.sql
+    case $backup_type in
+        full)
+            echo "Performing full backup..." | tee -a "$LOG_FILE"
+            mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" --all-databases > "$BACKUP_PATH/all-databases.sql" || handle_error "Full backup failed!"
+            ;;
+        differential)
+            if [ -z "$last_full_backup" ]; then
+                handle_error "No previous full backup found. Please perform a full backup first."
+            fi
+            echo "Performing differential backup since $last_full_backup..." | tee -a "$LOG_FILE"
+            mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" --all-databases --flush-logs --master-data=2 --single-transaction --incremental-base-dir="$last_full_backup" > "$BACKUP_PATH/differential.sql" || handle_error "Differential backup failed!"
+            ;;
+        incremental)
+            if [ -z "$last_backup" ]; then
+                handle_error "No previous backup found. Please perform a full or differential backup first."
+            fi
+            echo "Performing incremental backup since $last_backup..." | tee -a "$LOG_FILE"
+            mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" --all-databases --flush-logs --master-data=2 --single-transaction --incremental-base-dir="$last_backup" > "$BACKUP_PATH/incremental.sql" || handle_error "Incremental backup failed!"
+            ;;
+        *)
+            handle_error "Invalid backup type specified. Use 'full', 'differential', or 'incremental'."
+            ;;
+    esac
+
+    gzip -"$GZIP_COMPRESSION_LEVEL" "$BACKUP_PATH"/*.sql
     chown -R mysql:mysql "$BACKUP_PATH"
     chmod -R 755 "$BACKUP_PATH"
-    echo "Backup created at $BACKUP_PATH" | tee -a "$LOG_FILE"
+    echo "Backup completed: $BACKUP_PATH" | tee -a "$LOG_FILE"
+}
 
-    # Optional: Encrypt the backup
-    encrypt_backup
+# Erweiterung der Backup-Funktion zur Auswahl des Typs
+backup() {
+    echo "Select backup type:"
+    echo "1) Full"
+    echo "2) Differential"
+    echo "3) Incremental"
+    read -p "Enter your choice (1/2/3): " choice
 
-    # Cleanup old backups
-    cleanup_old_backups
+    case $choice in
+        1)
+            perform_backup full
+            ;;
+        2)
+            perform_backup differential
+            ;;
+        3)
+            perform_backup incremental
+            ;;
+        *)
+            echo "Invalid choice. Exiting."
+            exit 1
+            ;;
+    esac
 }
 
 # Erweiterte Restore-Funktion mit Entschlüsselung
