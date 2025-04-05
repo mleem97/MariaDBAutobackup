@@ -1,16 +1,18 @@
 # MariaDBAutobackup
 
-Ein Skript, das automatische Backups einer MariaDB-Live-Datenbank ermöglicht.
+Ein Skript, das automatische Backups einer MariaDB/MySQL-Datenbank ermöglicht.
 
 ## Übersicht
 
-MariaDBAutobackup ist ein Shell-Skript, das entwickelt wurde, um regelmäßige Backups einer MariaDB-Datenbank zu automatisieren. Es erleichtert die Sicherung und Wiederherstellung von Datenbanken, um den Verlust wichtiger Daten zu verhindern. Es bietet erweiterte Funktionen wie Verschlüsselung, Bereinigung alter Backups und Cron-Job-Integration.
+MariaDBAutobackup ist ein Shell-Skript, das entwickelt wurde, um regelmäßige Backups einer MariaDB/MySQL-Datenbank zu automatisieren. Es erleichtert die Sicherung und Wiederherstellung von Datenbanken, um den Verlust wichtiger Daten zu verhindern. Es bietet erweiterte Funktionen wie Verschlüsselung, Bereinigung alter Backups, verschiedene Backup-Typen und Remote-Backup-Optionen.
 
 ## Inhalt
 
 - [Installation](#installation)
 - [Konfiguration](#konfiguration)
 - [Verwendung](#verwendung)
+- [Backup-Typen](#backup-typen)
+- [Remote Backup-Optionen](#remote-backup-optionen)
 - [Automatisierung](#automatisierung)
 - [Erweiterte Funktionen](#erweiterte-funktionen)
 - [Beitragende](#beitragende)
@@ -48,8 +50,33 @@ MariaDBAutobackup ist ein Shell-Skript, das entwickelt wurde, um regelmäßige B
 2. Passe die Konfigurationsvariablen an deine Umgebung an. Beispielsweise:
 
     ```sh
-    DEFAULT_BACKUP_DIR="/var/lib/mysql"
+    # Datenbank-Einstellungen
+    DATABASE_HOST="localhost"
+    DATABASE_USER="root"
+    DATABASE_PASSWORD=""
+    
+    # Backup-Einstellungen
+    BACKUP_DIR="/var/lib/mysql-backups"
     LOG_FILE="/var/log/mdbackup.log"
+    BACKUP_RETENTION_DAYS="7"
+    GZIP_COMPRESSION_LEVEL="6"
+    
+    # Verschlüsselungs-Einstellungen
+    ENCRYPT_BACKUPS="no"
+    GPG_KEY_ID=""
+    
+    # Zeitplan-Einstellungen
+    BACKUP_TIME="02:00"
+    
+    # Remote Backup-Einstellungen
+    REMOTE_BACKUP_ENABLED="no"
+    # NFS-Einstellungen
+    REMOTE_NFS_MOUNT=""
+    # RSYNC-Einstellungen
+    REMOTE_RSYNC_TARGET=""
+    # Cloud-Einstellungen
+    REMOTE_CLOUD_CLI=""
+    REMOTE_CLOUD_BUCKET=""
     ```
 
 ## Verwendung
@@ -60,7 +87,7 @@ Das Skript unterstützt die folgenden Befehle:
   ```sh
   mdbackup backup
   ```
-  Erstellt ein Backup der MariaDB-Datenbank. Du kannst wählen, ob alle Datenbanken oder nur eine spezifische gesichert werden sollen.
+  Erstellt ein Backup der MariaDB/MySQL-Datenbank. Du kannst zwischen verschiedenen Backup-Typen wählen oder spezifische Tabellen sichern.
 
 - **Backup wiederherstellen**:
   ```sh
@@ -68,32 +95,88 @@ Das Skript unterstützt die folgenden Befehle:
   ```
   Stellt eine Datenbank aus einem vorhandenen Backup wieder her.
 
+- **Konfiguration anzeigen/ändern**:
+  ```sh
+  mdbackup configure
+  ```
+  Konfiguriert die Einstellungen des Skripts.
+
+- **Skript aktualisieren**:
+  ```sh
+  mdbackup update
+  ```
+  Aktualisiert das Skript auf die neueste Version.
+
+- **Version anzeigen**:
+  ```sh
+  mdbackup version
+  ```
+  Zeigt die aktuelle Version des Skripts an.
+
+- **Updates überprüfen**:
+  ```sh
+  mdbackup check-updates
+  ```
+  Überprüft, ob Updates für das Skript verfügbar sind.
+
+- **Skript installieren**:
+  ```sh
+  mdbackup install
+  ```
+  Installiert das Skript und richtet einen Service ein.
+
+- **Skript deinstallieren**:
+  ```sh
+  mdbackup uninstall
+  ```
+  Deinstalliert das Skript und entfernt den Service.
+
 - **Hilfe anzeigen**:
   ```sh
   mdbackup help
   ```
   Zeigt die verfügbaren Befehle und deren Beschreibung an.
 
+## Backup-Typen
+
+Das Skript unterstützt verschiedene Backup-Typen:
+
+- **Vollständiges Backup**: Ein komplettes Backup aller Datenbanken.
+- **Differentielles Backup**: Speichert nur die Änderungen seit dem letzten vollständigen Backup.
+- **Inkrementelles Backup**: Speichert nur die Änderungen seit dem letzten Backup (egal welchen Typs).
+- **Tabellen-spezifisches Backup**: Sichert nur ausgewählte Tabellen einer bestimmten Datenbank.
+
+## Remote Backup-Optionen
+
+Das Skript unterstützt die Übertragung von Backups zu entfernten Speicherorten:
+
+- **NFS-Share**: Backups können auf ein NFS-Share kopiert werden.
+- **RSYNC**: Backups können mit rsync auf entfernte Server übertragen werden.
+- **Cloud-Speicher**: Backups können mithilfe eines Cloud-CLI-Tools auf Cloud-Speicher hochgeladen werden (z.B. AWS S3, Google Cloud Storage).
+
 ## Automatisierung
 
-Um regelmäßige Backups zu automatisieren, richte einen Cron-Job ein:
+Nach der Installation wird ein systemd-Timer eingerichtet, der das Backup täglich zur konfigurierten Zeit ausführt:
 
 ```sh
-sudo mdbackup.sh setup_cron_job
+# Zeigt den Status des Timers an
+sudo systemctl status mdbackup.timer
 ```
-
-Dies erstellt einen täglichen Cron-Job, der das Backup um 2:00 Uhr ausführt.
 
 ## Erweiterte Funktionen
 
-- **Abhängigkeitsprüfung und Installation**: Das Skript überprüft und installiert automatisch erforderliche Abhängigkeiten wie `mysqldump`, `gzip` und `gunzip`.
+- **Abhängigkeitsprüfung und Installation**: Das Skript überprüft und installiert automatisch erforderliche Abhängigkeiten.
 - **Verschlüsselung**: Backups können optional mit GPG verschlüsselt werden.
-- **Bereinigung alter Backups**: Backups, die älter als 30 Tage sind, werden automatisch gelöscht.
+- **Bereinigung alter Backups**: Backups, die älter als die konfigurierte Anzahl von Tagen sind, werden automatisch gelöscht.
 - **Testmodus**: Führt Befehle im Testmodus aus, ohne Änderungen vorzunehmen.
-- **Remote-Installation**: Unterstützt die Installation auf entfernten Geräten über SSH.
+- **Pre- und Post-Backup-Hooks**: Ermöglicht die Ausführung von benutzerdefinierten Skripten vor und nach dem Backup-Prozess.
+- **Fortschrittsanzeige**: Visualisiert den Backup-Fortschritt bei längeren Prozessen.
+- **Automatische Updates**: Überprüft regelmäßig auf Updates des Skripts.
+- **Konfigurationsprüfung**: Validiert die Konfigurationsdatei vor dem Ausführen von Backups.
 
 ## Hinweise
-- Das Script wurde stand 03.04.25 noch nicht getestet. Bitte nutzt die **"Issues"** um Fehler zu melden. 
+- Das Skript ist derzeit in Version 1.1.5.
+- Bitte nutzt die **"Issues"** auf GitHub um Fehler zu melden oder Verbesserungsvorschläge einzureichen.
 
 ## Beitragende
 
