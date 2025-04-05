@@ -606,7 +606,7 @@ check_prerequisites() {
     elif [ "$COMPRESSION_ALGORITHM" == "xz" ]; then
         dependencies+=("xz")
     fi
-    if [ -n "$REMOTE_RSYNC_TARGET" ]; then
+        if [ -n "$REMOTE_RSYNC_TARGET" ]; then
         dependencies+=("rsync")
     fi
     # Prüfung aller benötigten Abhängigkeiten
