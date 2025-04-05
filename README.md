@@ -54,20 +54,20 @@ MariaDBAutobackup ist ein Shell-Skript, das entwickelt wurde, um regelmäßige B
     DATABASE_HOST="localhost"
     DATABASE_USER="root"
     DATABASE_PASSWORD=""
-    
+
     # Backup-Einstellungen
     BACKUP_DIR="/var/lib/mysql-backups"
     LOG_FILE="/var/log/mdbackup.log"
     BACKUP_RETENTION_DAYS="7"
     GZIP_COMPRESSION_LEVEL="6"
-    
+
     # Verschlüsselungs-Einstellungen
     ENCRYPT_BACKUPS="no"
     GPG_KEY_ID=""
-    
+
     # Zeitplan-Einstellungen
     BACKUP_TIME="02:00"
-    
+
     # Remote Backup-Einstellungen
     REMOTE_BACKUP_ENABLED="no"
     # NFS-Einstellungen

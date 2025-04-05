@@ -587,8 +587,118 @@ validate_config_file() {
     echo "Configuration file is valid." | tee -a "$LOG_FILE"
 }
 
+# Erweiterte Funktion zur umfassenden Prüfung aller Voraussetzungen
+check_prerequisites() {
+    echo "Performing comprehensive prerequisite check..." | tee -a "$LOG_FILE"
+    # 1. Prüfung der MariaDB/MySQL-Installation
+    if ! command -v mysql &> /dev/null; then
+        handle_error "MySQL/MariaDB is not installed. Please install it first."
+    fi
+    echo "✅ MySQL/MariaDB is installed." | tee -a "$LOG_FILE"
+    # 2. Prüfung der Abhängigkeiten
+    local dependencies=("mysqldump" "gzip" "find" "date")
+    # Abhängigkeiten basierend auf Konfiguration hinzufügen
+    if [ "$ENCRYPT_BACKUPS" == "yes" ]; then
+        dependencies+=("gpg")
+    fi
+    if [ "$COMPRESSION_ALGORITHM" == "bzip2" ]; then
+        dependencies+=("bzip2")
+    elif [ "$COMPRESSION_ALGORITHM" == "xz" ]; then
+        dependencies+=("xz")
+    fi
+    if [ -n "$REMOTE_RSYNC_TARGET" ]; then
+        dependencies+=("rsync")
+    fi
+    # Prüfung aller benötigten Abhängigkeiten
+    local missing_deps=()
+    for dep in "${dependencies[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            missing_deps+=("$dep")
+        fi
+    done
+    if [ ${#missing_deps[@]} -gt 0 ]; then
+        echo "Missing dependencies: ${missing_deps[*]}" | tee -a "$LOG_FILE"
+        read -p "Do you want to attempt to install these dependencies? [y/N]: " install_choice
+        if [[ "$install_choice" =~ ^[Yy] ]]; then
+            if command -v apt-get &> /dev/null; then
+                sudo apt-get update && sudo apt-get install -y "${missing_deps[@]}"
+            elif command -v yum &> /dev/null; then
+                sudo yum install -y "${missing_deps[@]}"
+            elif command -v dnf &> /dev/null; then
+                sudo dnf install -y "${missing_deps[@]}"
+            elif command -v pacman &> /dev/null; then
+                sudo pacman -S --noconfirm "${missing_deps[@]}"
+            else
+                handle_error "Unable to install dependencies automatically. Please install them manually: ${missing_deps[*]}"
+            fi
+        else
+            handle_error "Please install the required dependencies first: ${missing_deps[*]}"
+        fi
+    fi
+    echo "✅ All required dependencies are installed." | tee -a "$LOG_FILE"
+    # 3. Überprüfung der Konfiguration
+    if [ ! -f "$CONFIG_FILE" ] && [ ! -f "$LOCAL_CONFIG_FILE" ]; then
+        echo "Warning: Configuration file not found. Using default values." | tee -a "$LOG_FILE"
+    else
+        echo "✅ Configuration file exists." | tee -a "$LOG_FILE"
+    fi
+    # 4. Teste Datenbankverbindung
+    echo "Testing database connection..." | tee -a "$LOG_FILE"
+    if ! mysql -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") -e "SELECT 1" &>/dev/null; then
+        handle_error "Cannot connect to the database. Please check your credentials and database server."
+    fi
+    echo "✅ Database connection successful." | tee -a "$LOG_FILE"
+    # 5. Prüfung des Backup-Verzeichnisses
+    if [ ! -d "$BACKUP_DIR" ]; then
+        echo "Backup directory does not exist. Creating it..." | tee -a "$LOG_FILE"
+        mkdir -p "$BACKUP_DIR" || handle_error "Failed to create backup directory: $BACKUP_DIR"
+    fi
+    # Teste Schreibrechte im Backup-Verzeichnis
+    if [ ! -w "$BACKUP_DIR" ]; then
+        handle_error "No write permission to backup directory: $BACKUP_DIR"
+    fi
+    echo "✅ Backup directory is writable." | tee -a "$LOG_FILE"
+    # 6. Überprüfung des verfügbaren Speicherplatzes
+    local available_space=$(df -P "$BACKUP_DIR" | awk 'NR==2 {print $4}')
+    local min_space=524288  # 512MB in KB
+    if [ "$available_space" -lt "$min_space" ]; then
+        echo "Warning: Less than 512MB of free space available in backup directory." | tee -a "$LOG_FILE"
+        read -p "Continue anyway? [y/N]: " continue_choice
+        if [[ ! "$continue_choice" =~ ^[Yy] ]]; then
+            exit 1
+        fi
+    fi
+    echo "✅ Sufficient disk space available: $(( available_space / 1024 )) MB" | tee -a "$LOG_FILE"
+    # 7. Prüfung der Remote-Backup-Konfiguration (falls aktiviert)
+    if [ "$REMOTE_BACKUP_ENABLED" == "yes" ]; then
+        if [ -n "$REMOTE_NFS_MOUNT" ]; then
+            if ! command -v mount &> /dev/null; then
+                handle_error "The 'mount' command is required for NFS backup but is not available."
+            fi
+            echo "✅ NFS mount prerequisites satisfied." | tee -a "$LOG_FILE"
+        elif [ -n "$REMOTE_RSYNC_TARGET" ]; then
+            if ! command -v rsync &> /dev/null; then
+                handle_error "The 'rsync' command is required for remote backup but is not available."
+            fi
+            echo "✅ rsync prerequisites satisfied." | tee -a "$LOG_FILE"
+        elif [ -n "$REMOTE_CLOUD_CLI" ]; then
+            if ! command -v "$REMOTE_CLOUD_CLI" &> /dev/null; then
+                handle_error "The '$REMOTE_CLOUD_CLI' command is required for cloud backup but is not available."
+            fi
+            echo "✅ Cloud CLI prerequisites satisfied." | tee -a "$LOG_FILE"
+        else
+            echo "Warning: Remote backup is enabled but no valid remote target is configured." | tee -a "$LOG_FILE"
+        fi
+    fi
+    echo "All prerequisites checked and satisfied." | tee -a "$LOG_FILE"
+}
+
 # Erweiterung der Hauptfunktion für die neue Backup-Integritätsprüfung
 case "$1" in
+    backup|restore)
+        check_prerequisites
+        # ...existing code...
+        ;;
     backup)
         backup
         ;;
