@@ -4,7 +4,7 @@
 #       chmod +x mdbackup.sh
 #       ./mdbackup.sh [command]
 
-VERSION="1.1.5" # Aktualisierte Skriptversion
+VERSION="1.1.7" # Aktualisierte Skriptversion
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/refs/heads/main/version.txt"
 
 # Konfigurationsdatei
@@ -26,7 +26,8 @@ load_config() {
     BACKUP_DIR="${BACKUP_DIR:-/var/lib/mysql-backups}"
     LOG_FILE="${LOG_FILE:-/var/log/mdbackup.log}"
     BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
-    GZIP_COMPRESSION_LEVEL="${GZIP_COMPRESSION_LEVEL:-6}"
+    COMPRESSION_ALGORITHM="${COMPRESSION_ALGORITHM:-gzip}"
+    COMPRESSION_LEVEL="${COMPRESSION_LEVEL:-6}"
     ENCRYPT_BACKUPS="${ENCRYPT_BACKUPS:-no}"
     GPG_KEY_ID="${GPG_KEY_ID:-}"
     BACKUP_TIME="${BACKUP_TIME:-02:00}"
@@ -48,6 +49,8 @@ show_help() {
     echo "  check-updates   Check for updates to the mdbackup script"
     echo "  install         Install mdbackup and set up service"
     echo "  uninstall       Uninstall mdbackup and remove service"
+    echo "  verify          Verify backup integrity"
+    echo "  configure-compression Configure compression settings"
     echo "  help            Display this help message"
 }
 
@@ -253,6 +256,118 @@ cleanup_old_backups() {
     echo "Old backups cleaned up." | tee -a "$LOG_FILE"
 }
 
+# Funktion zur Berechnung und Speicherung von Prüfsummen für Backup-Dateien
+calculate_checksum() {
+    local backup_dir=$1
+    echo "Calculating checksums for backup files in $backup_dir..." | tee -a "$LOG_FILE"
+    find "$backup_dir" -type f -name "*.sql*" | while read -r file; do
+        if command -v sha256sum &> /dev/null; then
+            sha256sum "$file" >> "$backup_dir/checksums.sha256"
+        elif command -v shasum &> /dev/null; then
+            shasum -a 256 "$file" >> "$backup_dir/checksums.sha256"
+        else
+            echo "Warning: No checksum tool found. Skipping checksum calculation." | tee -a "$LOG_FILE"
+            return
+        fi
+    done
+    echo "Checksums calculated and stored in $backup_dir/checksums.sha256" | tee -a "$LOG_FILE"
+}
+
+# Funktion zur Überprüfung der Backup-Integrität
+verify_backup_integrity() {
+    echo "Available backups in $BACKUP_DIR:" | tee -a "$LOG_FILE"
+    ls "$BACKUP_DIR" | grep "backup-" || { echo "No backups found." | tee -a "$LOG_FILE"; exit 1; }
+
+    read -p "Enter the backup folder name to verify: " backup_folder
+    BACKUP_PATH="$BACKUP_DIR/$backup_folder"
+
+    if [ ! -d "$BACKUP_PATH" ]; then
+        handle_error "Backup folder not found."
+    fi
+
+    if [ ! -f "$BACKUP_PATH/checksums.sha256" ]; then
+        handle_error "No checksums file found for this backup."
+    fi
+
+    echo "Verifying backup integrity for $BACKUP_PATH..." | tee -a "$LOG_FILE"
+    if command -v sha256sum &> /dev/null; then
+        cd "$BACKUP_PATH" && sha256sum -c checksums.sha256
+    elif command -v shasum &> /dev/null; then
+        cd "$BACKUP_PATH" && shasum -a 256 -c checksums.sha256
+    else
+        handle_error "No checksum verification tool found."
+    fi
+    if [ $? -eq 0 ]; then
+        echo "Backup integrity verified successfully!" | tee -a "$LOG_FILE"
+    else
+        handle_error "Backup integrity check failed. Some files may be corrupted."
+    fi
+}
+
+# Funktion zur Komprimierung von Backup-Dateien mit verschiedenen Algorithmen
+compress_backup() {
+    local backup_dir=$1
+    local compression_algorithm=$2
+    local compression_level=$3
+    echo "Compressing backup files in $backup_dir using $compression_algorithm level $compression_level..." | tee -a "$LOG_FILE"
+    find "$backup_dir" -type f -name "*.sql" | while read -r file; do
+        case $compression_algorithm in
+            gzip)
+                gzip -"$compression_level" "$file"
+                ;;
+            bzip2)
+                bzip2 -"$compression_level" "$file"
+                ;;
+            xz)
+                xz -"$compression_level" "$file"
+                ;;
+            *)
+                handle_error "Unknown compression algorithm: $compression_algorithm"
+                ;;
+        esac
+        echo "Compressed $file using $compression_algorithm" | tee -a "$LOG_FILE"
+    done
+    echo "All backup files compressed successfully!" | tee -a "$LOG_FILE"
+}
+
+# Erweiterung der Konfigurationsfunktion für Komprimierungseinstellungen
+configure_compression() {
+    echo "Configure compression settings:"
+    echo "1) gzip (fastest, moderate compression)"
+    echo "2) bzip2 (slower, better compression)"
+    echo "3) xz (slowest, best compression)"
+    read -p "Select compression algorithm [1-3] (default: 1): " compression_choice
+    case ${compression_choice:-1} in
+        1)
+            COMPRESSION_ALGORITHM="gzip"
+            ;;
+        2)
+            COMPRESSION_ALGORITHM="bzip2"
+            ;;
+        3)
+            COMPRESSION_ALGORITHM="xz"
+            ;;
+        *)
+            echo "Invalid choice. Using default (gzip)."
+            COMPRESSION_ALGORITHM="gzip"
+            ;;
+    esac
+    read -p "Select compression level [1-9] (default: 6, higher = better compression but slower): " compression_level
+    COMPRESSION_LEVEL=${compression_level:-6}
+    # Update config file
+    if grep -q "COMPRESSION_ALGORITHM" "$CONFIG_FILE"; then
+        sed -i "s/COMPRESSION_ALGORITHM=.*/COMPRESSION_ALGORITHM=\"$COMPRESSION_ALGORITHM\"/" "$CONFIG_FILE"
+    else
+        echo "COMPRESSION_ALGORITHM=\"$COMPRESSION_ALGORITHM\"" >> "$CONFIG_FILE"
+    fi
+    if grep -q "COMPRESSION_LEVEL" "$CONFIG_FILE"; then
+        sed -i "s/COMPRESSION_LEVEL=.*/COMPRESSION_LEVEL=\"$COMPRESSION_LEVEL\"/" "$CONFIG_FILE"
+    else
+        echo "COMPRESSION_LEVEL=\"$COMPRESSION_LEVEL\"" >> "$CONFIG_FILE"
+    fi
+    echo "Compression settings updated in configuration file."
+}
+
 # Funktion zur Durchführung von Backups (vollständig, differenziell, inkrementell)
 perform_backup() {
     local backup_type=$1
@@ -287,7 +402,10 @@ perform_backup() {
             ;;
     esac
 
-    gzip -"$GZIP_COMPRESSION_LEVEL" "$BACKUP_PATH"/*.sql
+    # Komprimiere die Backup-Dateien mit dem konfigurierten Algorithmus
+    compress_backup "$BACKUP_PATH" "$COMPRESSION_ALGORITHM" "$COMPRESSION_LEVEL"
+    # Berechne und speichere Prüfsummen für die Backup-Dateien
+    calculate_checksum "$BACKUP_PATH"
     chown -R mysql:mysql "$BACKUP_PATH"
     chmod -R 755 "$BACKUP_PATH"
     echo "Backup completed: $BACKUP_PATH" | tee -a "$LOG_FILE"
@@ -468,3 +586,45 @@ validate_config_file() {
     fi
     echo "Configuration file is valid." | tee -a "$LOG_FILE"
 }
+
+# Erweiterung der Hauptfunktion für die neue Backup-Integritätsprüfung
+case "$1" in
+    backup)
+        backup
+        ;;
+    restore)
+        restore
+        ;;
+    configure)
+        configure
+        ;;
+    update)
+        check_for_updates
+        ;;
+    version)
+        echo "mdbackup version $VERSION"
+        ;;
+    check-updates)
+        check_for_updates
+        ;;
+    install)
+        install
+        ;;
+    uninstall)
+        uninstall_script
+        ;;
+    verify)
+        verify_backup_integrity
+        ;;
+    configure-compression)
+        configure_compression
+        ;;
+    help)
+        show_help
+        ;;
+    *)
+        echo "Unknown command: $1"
+        show_help
+        exit 1
+        ;;
+esac
