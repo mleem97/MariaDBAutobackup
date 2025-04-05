@@ -4,21 +4,51 @@
 #       chmod +x mdbackup.sh
 #       ./mdbackup.sh [command]
 
-VERSION="1.0.0" # Current script version
-REMOTE_VERSION_URL="https://raw.githubusercontent.com/your-repo/MariaDBAutobackup/main/version.txt"
+VERSION="1.1.0" # Aktualisierte Skriptversion
+REMOTE_VERSION_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/main/version.txt"
+
+# Konfigurationsdatei
+CONFIG_FILE="/etc/mdbackup.conf"
+LOCAL_CONFIG_FILE="$(dirname "$0")/mdbackup.conf"
+
+# Funktion zum Laden der Konfiguration
+load_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+    elif [ -f "$LOCAL_CONFIG_FILE" ]; then
+        source "<span class="math-inline">LOCAL\_CONFIG\_FILE"
+else
+echo "Warning\: Configuration file not found\. Using default values\."
+fi
+\# Setze Standardwerte, falls in der Konfiguration nicht vorhanden
+DATABASE\_HOST\="</span>{DATABASE_HOST:-localhost}"
+    DATABASE_USER="<span class="math-inline">\{DATABASE\_USER\:\-root\}"
+BACKUP\_DIR\="</span>{BACKUP_DIR:-/var/lib/mysql-backups}"
+    LOG_FILE="<span class="math-inline">\{LOG\_FILE\:\-/var/log/mdbackup\.log\}"
+BACKUP\_RETENTION\_DAYS\="</span>{BACKUP_RETENTION_DAYS:-7}"
+    GZIP_COMPRESSION_LEVEL="<span class="math-inline">\{GZIP\_COMPRESSION\_LEVEL\:\-6\}"
+ENCRYPT\_BACKUPS\="</span>{ENCRYPT_BACKUPS:-no}"
+    GPG_KEY_ID="<span class="math-inline">\{GPG\_KEY\_ID\:\-\}"
+BACKUP\_TIME\="</span>{BACKUP_TIME:-02:00}"
+}
+
+# Konfiguration laden
+load_config
 
 # Funktion zur Anzeige der Hilfe
 show_help() {
     echo "Usage: mdbackup [command]"
     echo ""
     echo "Commands:"
-    echo "  backup      Create a backup of MariaDB database"
-    echo "  restore     Restore a MariaDB database from a backup"
-    echo "  configure   Configure mdbackup settings"
-    echo "  update      Update the mdbackup script to the latest version"
-    echo "  version     Show the current version of mdbackup"
-    echo "  check-updates Check for updates to the mdbackup script"
-    echo "  help        Display this help message"
+    echo "  backup          Create a backup of MariaDB database"
+    echo "  restore         Restore a MariaDB database from a backup"
+    echo "  configure       Configure mdbackup settings"
+    echo "  update          Update the mdbackup script to the latest version"
+    echo "  version         Show the current version of mdbackup"
+    echo "  check-updates   Check for updates to the mdbackup script"
+    echo "  install         Install mdbackup and set up service"
+    echo "  uninstall       Uninstall mdbackup and remove service"
+    echo "  help            Display this help message"
 }
 
 # Funktion zur Überprüfung, ob MariaDB oder MySQL installiert ist
@@ -34,7 +64,13 @@ check_mariadb_mysql_installed() {
 # Funktion zur Überprüfung von Abhängigkeiten
 check_dependencies() {
     local dependencies=("mysqldump" "gzip" "gunzip")
-    for dep in "${dependencies[@]}"; do
+    if [ "$ENCRYPT_BACKUPS" == "yes" ]; then
+        dependencies+=("gpg")
+    fi
+    if [ "<span class="math-inline">1" \=\= "install" \]; then
+dependencies\+\=\("systemctl"\)
+fi
+for dep in "</span>{dependencies[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             echo "Error: Required dependency '$dep' is not installed. Please install it first."
             exit 1
@@ -45,70 +81,116 @@ check_dependencies() {
 # Funktion zur Überprüfung und Installation von Abhängigkeiten
 check_and_install_dependencies() {
     local dependencies=("mysqldump" "gzip" "gunzip")
-    local missing_dependencies=()
-
-    for dep in "${dependencies[@]}"; do
+    if [ "<span class="math-inline">ENCRYPT\_BACKUPS" \=\= "yes" \]; then
+dependencies\+\=\("gpg"\)
+fi
+<0\>local missing\_dependencies\=\(\)
+for dep <1\>in "</span>{dependencies[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             missing_dependencies+=("$dep")
         fi
     done
 
     if [ ${#missing_dependencies[@]} -eq 0 ]; then
-        echo "All dependencies are already installed."
+        echo "All necessary dependencies are already installed."
         return
     fi
 
-    echo "Dependencies are not fulfilled: ${missing_dependencies[*]}"
-    read -p "Do you want to install them now? [Y/n]: " install_choice
-    install_choice=${install_choice:-Y}
+    echo "The following dependencies are missing: <span class="math-inline">\{missing\_dependencies\[\*\]\}"
+read \-p "Do you want to install them now? \[Y/n\]\: " install\_choice
+install\_choice\=</span>{install_choice:-Y}
 
-    if [[ "$install_choice" =~ ^[Yy]$ ]]; then
-        for dep in "${missing_dependencies[@]}"; do
-            echo "Installing $dep..."
-            if command -v apt-get &> /dev/null; then
+    if [[ "<span class="math-inline">install\_choice" \=\~ ^\[Yy\]</span> ]]; then
+        if command -v apt-get &> /dev/null; then
+            sudo apt-get update
+            for dep in "${missing_dependencies[@]}"; do
+                echo "Installing $dep..."
                 sudo apt-get install -y "$dep"
-            else
-                echo "This script is optimized for Debian-based systems. Please install $dep manually."
-                exit 1
-            fi
-        done
-        echo "All missing dependencies have been installed."
+            done
+            echo "All missing dependencies have been installed."
+        else
+            echo "This script is optimized for Debian-based systems using apt-get. Please install the missing dependencies manually."
+            exit 1
+        fi
     else
         echo "Dependencies were not installed. Exiting."
         exit 1
     fi
 }
 
-# Funktion zur Installation des Skripts (mit Update-Mechanismus)
+# Funktion zur Installation des Skripts und der Systemd-Dateien
 install_script() {
     local script_path="/usr/local/bin/mdbackup"
-    if [ -f "$script_path" ]; then
-        echo "mdbackup script is already installed at $script_path."
-        read -p "Do you want to overwrite the existing installation? (yes/no): " overwrite_choice
-        if [ "$overwrite_choice" != "yes" ]; then
-            echo "Installation aborted."
-            exit 0
-        fi
-    fi
+    local service_file="/etc/systemd/system/mdbackup.service"
+    local timer_file="/etc/systemd/system/mdbackup.timer"
+
     echo "Installing mdbackup script to $script_path..."
-    cp "$0" "$script_path"
-    chmod +x "$script_path"
-    echo "Installation completed."
+    sudo cp "$0" "$script_path"
+    sudo chmod +x "$script_path"
+
+    echo "Installing systemd service file to $service_file..."
+    echo "[Unit]" | sudo tee "$service_file"
+    echo "Description=MariaDB/MySQL Automatic Backup Service" | sudo tee -a "$service_file"
+    echo "After=network.target mysql.service mariadb.service" | sudo tee -a "$service_file"
+    echo "Requires=mysql.service mariadb.service" | sudo tee -a "$service_file"
+    echo "" | sudo tee -a "$service_file"
+    echo "[Service]" | sudo tee -a "$service_file"
+    echo "User=root" | sudo tee -a "$service_file"
+    echo "Group=root" | sudo tee -a "$service_file"
+    echo "Type=oneshot" | sudo tee -a "$service_file"
+    echo "EnvironmentFile=$CONFIG_FILE" | sudo tee -a "$service_file"
+    echo "ExecStart=$script_path backup" | sudo tee -a "$service_file"
+    echo "StandardOutput=append:%LOG_FILE%" | sudo tee -a "$service_file"
+    echo "StandardError=append:%LOG_FILE%" | sudo tee -a "$service_file"
+
+    echo "Installing systemd timer file to $timer_file..."
+    echo "[Unit]" | sudo tee "$timer_file"
+    echo "Description=Daily MariaDB/MySQL Backup Timer" | sudo tee -a "$timer_file"
+    echo "After=mdbackup.service" | sudo tee -a "$timer_file"
+    echo "" | sudo tee -a "$timer_file"
+    echo "[Timer]" | sudo tee -a "$timer_file"
+    echo "Unit=mdbackup.service" | sudo tee -a "$timer_file"
+    echo "OnCalendar=*-*-*:%BACKUP_TIME%" | sudo tee -a "$timer_file"
+    echo "Persistent=true" | sudo tee -a "$timer_file"
+    echo "" | sudo tee -a "$timer_file"
+    echo "[Install]" | sudo tee -a "$timer_file"
+    echo "WantedBy=timers.target" | sudo tee -a "$timer_file"
+
+    echo "Enabling and starting the mdbackup timer..."
+    sudo systemctl daemon-reload
+    sudo systemctl enable mdbackup.timer
+    sudo systemctl start mdbackup.timer
+
+    echo "Installation completed. The daily backup will run at the time specified in <span class="math-inline">CONFIG\_FILE\."
+\}
+\# Funktion zur Deinstallation des Skripts und der Systemd\-Dateien
+uninstall\_script\(\) \{
+local script\_path\="/usr/local/bin/mdbackup"
+local service\_file\="/etc/systemd/system/mdbackup\.service"
+local timer\_file\="/etc/systemd/system/mdbackup\.timer"
+read \-p "Are you sure you want to uninstall mdbackup? This will stop the timer and remove the script and service files\. \[Y/n\]\: " uninstall\_choice
+uninstall\_choice\=</span>{uninstall_choice:-N}
+
+    if [[ "<span class="math-inline">uninstall\_choice" \=\~ ^\[Yy\]</span> ]]; then
+        echo "Stopping and disabling the mdbackup timer..."
+        sudo systemctl stop mdbackup.timer
+        sudo systemctl disable mdbackup.timer
+
+        echo "Removing systemd service file $service_file..."
+        sudo rm -f "$service_file"
+
+        echo "Removing systemd timer file $timer_file..."
+        sudo rm -f "$timer_file"
+
+        echo "Removing script $script_path..."
+        sudo rm -f "$script_path"
+
+        sudo systemctl daemon-reload
+        echo "Uninstallation completed."
+    else
+        echo "Uninstallation aborted."
+    fi
 }
-
-# Load configuration file if it exists
-CONFIG_FILE="/etc/mdbackup.conf"
-LOCAL_CONFIG_FILE="$(dirname "$0")/mdbackup.conf"
-if [ -f "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
-elif [ -f "$LOCAL_CONFIG_FILE" ]; then
-    source "$LOCAL_CONFIG_FILE"
-fi
-
-# Default values if not set in configuration
-DEFAULT_BACKUP_DIR=${DEFAULT_BACKUP_DIR:-"/var/lib/mysql"}
-BACKUP_DIR=${BACKUP_DIR_OVERRIDE:-$DEFAULT_BACKUP_DIR}
-LOG_FILE=${LOG_FILE:-"/var/log/mdbackup.log"}
 
 # Funktion zur Fehlerbehandlung
 handle_error() {
@@ -121,17 +203,21 @@ validate_config() {
     if [ -z "$BACKUP_DIR" ] || [ -z "$LOG_FILE" ]; then
         handle_error "Configuration is invalid. Please check $CONFIG_FILE."
     fi
+    if [ "$ENCRYPT_BACKUPS" == "yes" ] && [ -z "$GPG_KEY_ID" ]; then
+        echo "Warning: Encryption is enabled but GPG key ID is not set in the configuration." | tee -a "$LOG_FILE"
+    fi
 }
 
 # Funktion zur Verschlüsselung von Backups
 encrypt_backup() {
-    read -p "Do you want to encrypt the backup? (yes/no): " encrypt_choice
-    if [ "$encrypt_choice" == "yes" ]; then
-        read -p "Enter the recipient's GPG key ID: " gpg_key
+    if [ "$ENCRYPT_BACKUPS" == "yes" ] && [ -n "$GPG_KEY_ID" ]; then
+        echo "Encrypting backups with GPG key ID: $GPG_KEY_ID..." | tee -a "$LOG_FILE"
         for file in "$BACKUP_PATH"/*.sql.gz; do
-            gpg --encrypt --recipient "$gpg_key" "$file" && rm "$file"
+            gpg --encrypt --recipient "$GPG_KEY_ID" "$file" && rm "$file"
             echo "Backup file $file encrypted." | tee -a "$LOG_FILE"
         done
+    elif [ "$ENCRYPT_BACKUPS" == "yes" ] && [ -z "$GPG_KEY_ID" ]; then
+        echo "Warning: Encryption is enabled but GPG key ID is not set. Skipping encryption." | tee -a "$LOG_FILE"
     fi
 }
 
@@ -139,8 +225,9 @@ encrypt_backup() {
 decrypt_backup() {
     read -p "Do you need to decrypt the backup? (yes/no): " decrypt_choice
     if [ "$decrypt_choice" == "yes" ]; then
-        for file in "$BACKUP_PATH"/*.sql.gz.gpg; do
-            gpg --decrypt "$file" > "${file%.gpg}" && rm "$file"
+        echo "Decrypting backup files..." | tee -a "$LOG_FILE"
+        for file in "<span class="math-inline">BACKUP\_PATH"/\*\.sql\.gz\.gpg; do
+gpg \-\-decrypt \-\-output "</span>{file%.gpg}" "$file" && rm "$file"
             echo "Backup file $file decrypted." | tee -a "$LOG_FILE"
         done
     fi
@@ -152,42 +239,34 @@ TEST_MODE=false
 # Wrapper für Befehle im Testmodus
 run_command() {
     if [ "$TEST_MODE" == "true" ]; then
-        echo "[TEST MODE] $*"
-    else
-        eval "$@"
+        echo "[TEST MODE] <span class="math-inline">\*"
+else
+eval "</span>@"
     fi
 }
 
 # Funktion zur Bereinigung alter Backups
 cleanup_old_backups() {
-    echo "Cleaning up backups older than 30 days in $BACKUP_DIR..." | tee -a "$LOG_FILE"
-    find "$BACKUP_DIR" -type d -name "backup-*" -mtime +30 -exec rm -rf {} \; | tee -a "$LOG_FILE"
+    echo "Cleaning up backups older than $BACKUP_RETENTION_DAYS days in $BACKUP_DIR..." | tee -a "$LOG_FILE"
+    find "$BACKUP_DIR" -type d -name "backup-*" -mtime +"$BACKUP_RETENTION_DAYS" -exec rm -rf {} \; | tee -a "$LOG_FILE"
     echo "Old backups cleaned up." | tee -a "$LOG_FILE"
-}
-
-# Funktion zur Einrichtung eines Cron-Jobs für tägliche Backups
-setup_cron_job() {
-    echo "Setting up daily backup cron job..." | tee -a "$LOG_FILE"
-    (crontab -l 2>/dev/null; echo "0 2 * * * /usr/local/bin/mdbackup backup") | crontab -
-    echo "Cron job created for daily backups at 2 AM." | tee -a "$LOG_FILE"
 }
 
 # Erweiterte Backup-Funktion mit Verschlüsselung
 backup() {
-    echo "Creating backup..." | tee -a "$LOG_FILE"
-    TIMESTAMP=$(date +"%F_%T")
+    echo "Creating backup..." | tee -a "<span class="math-inline">LOG\_FILE"
+TIMESTAMP\=</span>(date +"%F_%T")
     BACKUP_PATH="$BACKUP_DIR/backup-$TIMESTAMP"
     mkdir -p "$BACKUP_PATH"
 
     read -p "Do you want to backup all databases? (yes/no): " all_dbs
     if [ "$all_dbs" == "yes" ]; then
-        run_command mysqldump --all-databases > "$BACKUP_PATH/all-databases.sql" || handle_error "Backup failed!"
+        run_command mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" --all-databases > "$BACKUP_PATH/all-databases.sql" || handle_error "Backup failed!"
     else
         read -p "Enter the database name to backup: " db_name
-        run_command mysqldump "$db_name" > "$BACKUP_PATH/$db_name.sql" || handle_error "Backup failed!"
-    fi
-
-    run_command gzip "$BACKUP_PATH"/*.sql
+        run_command mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" "$db_name" > "$BACKUP_PATH/<span class="math-inline">db\_name\.sql" \|\| handle\_error "Backup failed\!"
+fi
+run\_command gzip \-"</span>{GZIP_COMPRESSION_LEVEL}" "$BACKUP_PATH"/*.sql
     chown -R mysql:mysql "$BACKUP_PATH"
     chmod -R 755 "$BACKUP_PATH"
     echo "Backup created at $BACKUP_PATH" | tee -a "$LOG_FILE"
@@ -211,7 +290,7 @@ restore() {
         handle_error "Backup folder not found."
     fi
 
-    if [ ! -f "$BACKUP_PATH/all-databases.sql.gz" ] && [ ! -f "$BACKUP_PATH/*.sql.gz.gpg" ]; then
+    if [ ! -f "$BACKUP_PATH/all-databases.sql.gz" ] && [ ! -f "$BACKUP_PATH/*.sql.gz.gpg" ] && [ ! -f "$BACKUP_PATH/*.sql.gz" ]; then
         handle_error "No valid backup files found in the specified directory."
     fi
 
@@ -220,7 +299,10 @@ restore() {
 
     echo "Restoring backup from $BACKUP_PATH..." | tee -a "$LOG_FILE"
     for file in "$BACKUP_PATH"/*.sql.gz; do
-        run_command gunzip -c "$file" | mysql || handle_error "Restore failed for $file!"
+        run_command gunzip -c "$file" | mysql -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" || handle_error "Restore failed for $file!"
+    done
+    for file in "$BACKUP_PATH"/*.sql; do
+        run_command mysql -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" < "$file" || handle_error "Restore failed for $file!"
     done
 
     chown -R mysql:mysql /var/lib/mysql
@@ -228,127 +310,6 @@ restore() {
     echo "Backup restored from $BACKUP_PATH" | tee -a "$LOG_FILE"
 }
 
-# Funktion zur Installation und Konfiguration
+# Funktion zur Installation
 install() {
-    read -p "Do you want to install the mdbackup application? (yes/no): " install_choice
-    if [ "$install_choice" != "yes" ]; then
-        echo "Installation aborted."
-        exit 0
-    fi
-
-    check_mariadb_mysql_installed
-    check_and_install_dependencies
-    install_script
-
-    # Mandatory configuration during installation
-    echo "Configuration is required during installation."
-    configure
-
-    read -p "Is this being executed on a remote device? (yes/no): " remote_choice
-    if [ "$remote_choice" == "yes" ]; then
-        read -p "Enter the IP address of the remote device: " remote_ip
-        read -p "Enter the username for the remote device: " remote_user
-        read -p "Do you want to use SSH key-based authentication? (yes/no): " ssh_key_choice
-
-        if [ "$ssh_key_choice" == "yes" ]; then
-            echo "Attempting SSH key-based authentication..."
-            scp "$0" "$remote_user@$remote_ip:/usr/local/bin/mdbackup" && \
-            ssh "$remote_user@$remote_ip" "chmod +x /usr/local/bin/mdbackup" && \
-            echo "Remote installation completed using SSH key-based authentication."
-        else
-            read -s -p "Enter the password for the remote device: " remote_pass
-            echo
-            echo "Attempting password-based authentication..."
-            sshpass -p "$remote_pass" scp "$0" "$remote_user@$remote_ip:/usr/local/bin/mdbackup" && \
-            sshpass -p "$remote_pass" ssh "$remote_user@$remote_ip" "chmod +x /usr/local/bin/mdbackup" && \
-            echo "Remote installation completed using password-based authentication."
-        fi
-    else
-        echo "Local installation completed."
-    fi
-}
-
-# Funktion zur Konfiguration
-configure() {
-    echo "Configuring mdbackup..."
-    local config_file="${LOCAL_CONFIG_FILE:-/etc/mdbackup.conf}"
-    echo "Configuration file: $config_file"
-
-    read -p "Enter backup directory [default: /var/lib/mysql]: " backup_dir
-    backup_dir=${backup_dir:-"/var/lib/mysql"}
-
-    read -p "Enter log file path [default: /var/log/mdbackup.log]: " log_file
-    log_file=${log_file:-"/var/log/mdbackup.log"}
-
-    echo "DEFAULT_BACKUP_DIR=\"$backup_dir\"" > "$config_file"
-    echo "LOG_FILE=\"$log_file\"" >> "$config_file"
-
-    echo "Configuration saved to $config_file."
-}
-
-# Funktion zur Anzeige der aktuellen Version
-show_version() {
-    echo "mdbackup version: $VERSION"
-}
-
-# Funktion zur Überprüfung auf Updates
-check_for_updates() {
-    echo "Checking for updates..."
-    if command -v curl &> /dev/null; then
-        remote_version=$(curl -s "$REMOTE_VERSION_URL")
-        if [ "$remote_version" != "$VERSION" ]; then
-            echo "A new version ($remote_version) is available. Current version: $VERSION."
-            read -p "Do you want to update now? (yes/no): " update_choice
-            if [ "$update_choice" == "yes" ]; then
-                update_script
-            else
-                echo "Update skipped."
-            fi
-        else
-            echo "You are using the latest version ($VERSION)."
-        fi
-    else
-        echo "Error: curl is not installed. Unable to check for updates."
-    fi
-}
-
-# Funktion zum Aktualisieren des Skripts
-update_script() {
-    local script_path="/usr/local/bin/mdbackup"
-    echo "Updating mdbackup script..."
-    cp "$0" "$script_path"
-    chmod +x "$script_path"
-    echo "mdbackup script updated successfully to version $VERSION."
-}
-
-# Validierung der Konfiguration
-validate_config
-
-# Hauptprogramm
-if [ ! -f /usr/local/bin/mdbackup ]; then
-    install
-fi
-
-case "$1" in
-    backup)
-        backup
-        ;;
-    restore)
-        restore "$2"
-        ;;
-    configure)
-        configure
-        ;;
-    update)
-        update_script
-        ;;
-    version)
-        show_version
-        ;;
-    check-updates)
-        check_for_updates
-        ;;
-    help|*)
-        show_help
-        ;;
-esac
+    read -p "Do you want to install the mdbackup application?
