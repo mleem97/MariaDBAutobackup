@@ -16,20 +16,20 @@ load_config() {
     if [ -f "$CONFIG_FILE" ]; then
         source "$CONFIG_FILE"
     elif [ -f "$LOCAL_CONFIG_FILE" ]; then
-        source "<span class="math-inline">LOCAL\_CONFIG\_FILE"
-else
-echo "Warning\: Configuration file not found\. Using default values\."
-fi
-\# Setze Standardwerte, falls in der Konfiguration nicht vorhanden
-DATABASE\_HOST\="</span>{DATABASE_HOST:-localhost}"
-    DATABASE_USER="<span class="math-inline">\{DATABASE\_USER\:\-root\}"
-BACKUP\_DIR\="</span>{BACKUP_DIR:-/var/lib/mysql-backups}"
-    LOG_FILE="<span class="math-inline">\{LOG\_FILE\:\-/var/log/mdbackup\.log\}"
-BACKUP\_RETENTION\_DAYS\="</span>{BACKUP_RETENTION_DAYS:-7}"
-    GZIP_COMPRESSION_LEVEL="<span class="math-inline">\{GZIP\_COMPRESSION\_LEVEL\:\-6\}"
-ENCRYPT\_BACKUPS\="</span>{ENCRYPT_BACKUPS:-no}"
-    GPG_KEY_ID="<span class="math-inline">\{GPG\_KEY\_ID\:\-\}"
-BACKUP\_TIME\="</span>{BACKUP_TIME:-02:00}"
+        source "$LOCAL_CONFIG_FILE"
+    else
+        echo "Warning: Configuration file not found. Using default values."
+    fi
+    # Setze Standardwerte, falls in der Konfiguration nicht vorhanden
+    DATABASE_HOST="${DATABASE_HOST:-localhost}"
+    DATABASE_USER="${DATABASE_USER:-root}"
+    BACKUP_DIR="${BACKUP_DIR:-/var/lib/mysql-backups}"
+    LOG_FILE="${LOG_FILE:-/var/log/mdbackup.log}"
+    BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
+    GZIP_COMPRESSION_LEVEL="${GZIP_COMPRESSION_LEVEL:-6}"
+    ENCRYPT_BACKUPS="${ENCRYPT_BACKUPS:-no}"
+    GPG_KEY_ID="${GPG_KEY_ID:-}"
+    BACKUP_TIME="${BACKUP_TIME:-02:00}"
 }
 
 # Konfiguration laden
@@ -67,10 +67,10 @@ check_dependencies() {
     if [ "$ENCRYPT_BACKUPS" == "yes" ]; then
         dependencies+=("gpg")
     fi
-    if [ "<span class="math-inline">1" \=\= "install" \]; then
-dependencies\+\=\("systemctl"\)
-fi
-for dep in "</span>{dependencies[@]}"; do
+    if [ "$1" == "install" ]; then
+        dependencies+=("systemctl")
+    fi
+    for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             echo "Error: Required dependency '$dep' is not installed. Please install it first."
             exit 1
@@ -81,11 +81,11 @@ for dep in "</span>{dependencies[@]}"; do
 # Funktion zur Überprüfung und Installation von Abhängigkeiten
 check_and_install_dependencies() {
     local dependencies=("mysqldump" "gzip" "gunzip")
-    if [ "<span class="math-inline">ENCRYPT\_BACKUPS" \=\= "yes" \]; then
-dependencies\+\=\("gpg"\)
-fi
-<0\>local missing\_dependencies\=\(\)
-for dep <1\>in "</span>{dependencies[@]}"; do
+    if [ "$ENCRYPT_BACKUPS" == "yes" ]; then
+        dependencies+=("gpg")
+    fi
+    local missing_dependencies=()
+    for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &> /dev/null; then
             missing_dependencies+=("$dep")
         fi
@@ -96,11 +96,11 @@ for dep <1\>in "</span>{dependencies[@]}"; do
         return
     fi
 
-    echo "The following dependencies are missing: <span class="math-inline">\{missing\_dependencies\[\*\]\}"
-read \-p "Do you want to install them now? \[Y/n\]\: " install\_choice
-install\_choice\=</span>{install_choice:-Y}
+    echo "The following dependencies are missing: ${missing_dependencies[*]}"
+    read -p "Do you want to install them now? [Y/n]: " install_choice
+    install_choice=${install_choice:-Y}
 
-    if [[ "<span class="math-inline">install\_choice" \=\~ ^\[Yy\]</span> ]]; then
+    if [[ "$install_choice" =~ ^[Yy] ]]; then
         if command -v apt-get &> /dev/null; then
             sudo apt-get update
             for dep in "${missing_dependencies[@]}"; do
@@ -161,17 +161,18 @@ install_script() {
     sudo systemctl enable mdbackup.timer
     sudo systemctl start mdbackup.timer
 
-    echo "Installation completed. The daily backup will run at the time specified in <span class="math-inline">CONFIG\_FILE\."
-\}
-\# Funktion zur Deinstallation des Skripts und der Systemd\-Dateien
-uninstall\_script\(\) \{
-local script\_path\="/usr/local/bin/mdbackup"
-local service\_file\="/etc/systemd/system/mdbackup\.service"
-local timer\_file\="/etc/systemd/system/mdbackup\.timer"
-read \-p "Are you sure you want to uninstall mdbackup? This will stop the timer and remove the script and service files\. \[Y/n\]\: " uninstall\_choice
-uninstall\_choice\=</span>{uninstall_choice:-N}
+    echo "Installation completed. The daily backup will run at the time specified in $CONFIG_FILE."
+}
 
-    if [[ "<span class="math-inline">uninstall\_choice" \=\~ ^\[Yy\]</span> ]]; then
+# Funktion zur Deinstallation des Skripts und der Systemd-Dateien
+uninstall_script() {
+    local script_path="/usr/local/bin/mdbackup"
+    local service_file="/etc/systemd/system/mdbackup.service"
+    local timer_file="/etc/systemd/system/mdbackup.timer"
+    read -p "Are you sure you want to uninstall mdbackup? This will stop the timer and remove the script and service files. [Y/n]: " uninstall_choice
+    uninstall_choice=${uninstall_choice:-N}
+
+    if [[ "$uninstall_choice" =~ ^[Yy] ]]; then
         echo "Stopping and disabling the mdbackup timer..."
         sudo systemctl stop mdbackup.timer
         sudo systemctl disable mdbackup.timer
@@ -226,8 +227,8 @@ decrypt_backup() {
     read -p "Do you need to decrypt the backup? (yes/no): " decrypt_choice
     if [ "$decrypt_choice" == "yes" ]; then
         echo "Decrypting backup files..." | tee -a "$LOG_FILE"
-        for file in "<span class="math-inline">BACKUP\_PATH"/\*\.sql\.gz\.gpg; do
-gpg \-\-decrypt \-\-output "</span>{file%.gpg}" "$file" && rm "$file"
+        for file in "$BACKUP_PATH"/*.sql.gz.gpg; do
+            gpg --decrypt --output "${file%.gpg}" "$file" && rm "$file"
             echo "Backup file $file decrypted." | tee -a "$LOG_FILE"
         done
     fi
@@ -239,9 +240,9 @@ TEST_MODE=false
 # Wrapper für Befehle im Testmodus
 run_command() {
     if [ "$TEST_MODE" == "true" ]; then
-        echo "[TEST MODE] <span class="math-inline">\*"
-else
-eval "</span>@"
+        echo "[TEST MODE] $*"
+    else
+        eval "$@"
     fi
 }
 
@@ -254,8 +255,8 @@ cleanup_old_backups() {
 
 # Erweiterte Backup-Funktion mit Verschlüsselung
 backup() {
-    echo "Creating backup..." | tee -a "<span class="math-inline">LOG\_FILE"
-TIMESTAMP\=</span>(date +"%F_%T")
+    echo "Creating backup..." | tee -a "$LOG_FILE"
+    TIMESTAMP=$(date +"%F_%T")
     BACKUP_PATH="$BACKUP_DIR/backup-$TIMESTAMP"
     mkdir -p "$BACKUP_PATH"
 
@@ -264,9 +265,9 @@ TIMESTAMP\=</span>(date +"%F_%T")
         run_command mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" --all-databases > "$BACKUP_PATH/all-databases.sql" || handle_error "Backup failed!"
     else
         read -p "Enter the database name to backup: " db_name
-        run_command mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" "$db_name" > "$BACKUP_PATH/<span class="math-inline">db\_name\.sql" \|\| handle\_error "Backup failed\!"
-fi
-run\_command gzip \-"</span>{GZIP_COMPRESSION_LEVEL}" "$BACKUP_PATH"/*.sql
+        run_command mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" "$db_name" > "$BACKUP_PATH/$db_name.sql" || handle_error "Backup failed!"
+    fi
+    run_command gzip -"$GZIP_COMPRESSION_LEVEL" "$BACKUP_PATH"/*.sql
     chown -R mysql:mysql "$BACKUP_PATH"
     chmod -R 755 "$BACKUP_PATH"
     echo "Backup created at $BACKUP_PATH" | tee -a "$LOG_FILE"
@@ -312,4 +313,76 @@ restore() {
 
 # Funktion zur Installation
 install() {
-    read -p "Do you want to install the mdbackup application?
+    read -p "Do you want to install the mdbackup application? [Y/n]: " install_choice
+    install_choice=${install_choice:-Y}
+
+    if [[ "$install_choice" =~ ^[Yy] ]]; then
+        check_dependencies install
+        install_script
+    else
+        echo "Installation aborted."
+    fi
+}
+
+# Funktion zur Fortschrittsanzeige
+show_progress() {
+    local current=$1
+    local total=$2
+    local percent=$((current * 100 / total))
+    printf "\rProgress: [%-50s] %d%%" $(printf "#%.0s" $(seq 1 $((percent / 2)))) $percent
+}
+
+# Automatische Update-Funktion
+check_for_updates() {
+    echo "Checking for updates..." | tee -a "$LOG_FILE"
+    local remote_version=$(curl -s "$REMOTE_VERSION_URL")
+    if [ "$remote_version" != "$VERSION" ]; then
+        echo "Update available: $remote_version. Updating..." | tee -a "$LOG_FILE"
+        curl -o "$0" "$REMOTE_VERSION_URL" && chmod +x "$0"
+        echo "Update completed. Please restart the script." | tee -a "$LOG_FILE"
+        exit 0
+    else
+        echo "No updates available." | tee -a "$LOG_FILE"
+    fi
+}
+
+# Konfigurationsprüfung
+validate_config_file() {
+    echo "Validating configuration file..." | tee -a "$LOG_FILE"
+    if [ ! -f "$CONFIG_FILE" ] && [ ! -f "$LOCAL_CONFIG_FILE" ]; then
+        handle_error "Configuration file not found."
+    fi
+
+    source "$CONFIG_FILE" 2>/dev/null || source "$LOCAL_CONFIG_FILE" 2>/dev/null
+
+    if [ -z "$DATABASE_HOST" ] || [ -z "$DATABASE_USER" ] || [ -z "$BACKUP_DIR" ]; then
+        handle_error "Configuration file is missing required fields."
+    fi
+    echo "Configuration file is valid." | tee -a "$LOG_FILE"
+}
+
+# Dokumentation
+#
+# Dieses Skript dient zur automatischen Sicherung und Wiederherstellung von MariaDB/MySQL-Datenbanken.
+#
+# Konfigurationsoptionen:
+# - DATABASE_HOST: Hostname der Datenbank (Standard: localhost)
+# - DATABASE_USER: Benutzername für die Datenbank (Standard: root)
+# - BACKUP_DIR: Verzeichnis für Backups (Standard: /var/lib/mysql-backups)
+# - LOG_FILE: Pfad zur Logdatei (Standard: /var/log/mdbackup.log)
+# - BACKUP_RETENTION_DAYS: Anzahl der Tage, nach denen alte Backups gelöscht werden (Standard: 7)
+# - GZIP_COMPRESSION_LEVEL: Kompressionsstufe für gzip (Standard: 6)
+# - ENCRYPT_BACKUPS: Ob Backups verschlüsselt werden sollen (yes/no, Standard: no)
+# - GPG_KEY_ID: GPG-Schlüssel-ID für die Verschlüsselung (falls ENCRYPT_BACKUPS=yes)
+# - BACKUP_TIME: Zeit für geplante Backups (Standard: 02:00)
+#
+# Befehle:
+# - backup: Erstellt ein Backup der Datenbank.
+# - restore: Stellt eine Datenbank aus einem Backup wieder her.
+# - configure: Konfiguriert die Einstellungen des Skripts.
+# - update: Aktualisiert das Skript auf die neueste Version.
+# - version: Zeigt die aktuelle Version des Skripts an.
+# - check-updates: Überprüft auf Updates für das Skript.
+# - install: Installiert das Skript und richtet den Service ein.
+# - uninstall: Deinstalliert das Skript und entfernt den Service.
+# - help: Zeigt diese Hilfe an.
