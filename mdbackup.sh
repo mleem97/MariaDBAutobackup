@@ -4,7 +4,7 @@
 #       chmod +x mdbackup.sh
 #       ./mdbackup.sh [command]
 
-VERSION="1.1.0" # Aktualisierte Skriptversion
+VERSION="1.1.5" # Aktualisierte Skriptversion
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/refs/heads/main/version.txt"
 
 # Konfigurationsdatei
@@ -293,13 +293,47 @@ perform_backup() {
     echo "Backup completed: $BACKUP_PATH" | tee -a "$LOG_FILE"
 }
 
-# Erweiterung der Backup-Funktion zur Auswahl des Typs
+# Funktion zur Durchführung von Backups bestimmter Tabellen
+backup_specific_tables() {
+    read -p "Enter the database name: " database_name
+    read -p "Enter the table names (comma-separated): " table_names
+
+    TIMESTAMP=$(date +"%F_%T")
+    BACKUP_PATH="$BACKUP_DIR/backup-tables-$TIMESTAMP"
+    mkdir -p "$BACKUP_PATH"
+
+    echo "Backing up tables [$table_names] from database [$database_name]..." | tee -a "$LOG_FILE"
+    mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$database_name" $table_names > "$BACKUP_PATH/tables.sql" || handle_error "Backup of specific tables failed!"
+
+    gzip -"$GZIP_COMPRESSION_LEVEL" "$BACKUP_PATH/tables.sql"
+    chown -R mysql:mysql "$BACKUP_PATH"
+    chmod -R 755 "$BACKUP_PATH"
+    echo "Backup of specific tables completed: $BACKUP_PATH" | tee -a "$LOG_FILE"
+}
+
+# Funktion zur Ausführung von Pre- und Post-Backup-Hooks
+run_hooks() {
+    local hook_type=$1
+    local hook_script="${hook_type}_backup_hook.sh"
+
+    if [ -f "$hook_script" ]; then
+        echo "Running $hook_type-backup hook..." | tee -a "$LOG_FILE"
+        bash "$hook_script" || handle_error "$hook_type-backup hook failed!"
+    else
+        echo "No $hook_type-backup hook found. Skipping." | tee -a "$LOG_FILE"
+    fi
+}
+
+# Erweiterung der Backup-Funktion zur Unterstützung von Tabellen-Backups und Hooks
 backup() {
     echo "Select backup type:"
     echo "1) Full"
     echo "2) Differential"
     echo "3) Incremental"
-    read -p "Enter your choice (1/2/3): " choice
+    echo "4) Specific Tables"
+    read -p "Enter your choice (1/2/3/4): " choice
+
+    run_hooks pre
 
     case $choice in
         1)
@@ -311,11 +345,16 @@ backup() {
         3)
             perform_backup incremental
             ;;
+        4)
+            backup_specific_tables
+            ;;
         *)
             echo "Invalid choice. Exiting."
             exit 1
             ;;
     esac
+
+    run_hooks post
 }
 
 # Erweiterte Restore-Funktion mit Entschlüsselung
