@@ -438,29 +438,3 @@ validate_config_file() {
     fi
     echo "Configuration file is valid." | tee -a "$LOG_FILE"
 }
-
-# Dokumentation
-#
-# Dieses Skript dient zur automatischen Sicherung und Wiederherstellung von MariaDB/MySQL-Datenbanken.
-#
-# Konfigurationsoptionen:
-# - DATABASE_HOST: Hostname der Datenbank (Standard: localhost)
-# - DATABASE_USER: Benutzername für die Datenbank (Standard: root)
-# - BACKUP_DIR: Verzeichnis für Backups (Standard: /var/lib/mysql-backups)
-# - LOG_FILE: Pfad zur Logdatei (Standard: /var/log/mdbackup.log)
-# - BACKUP_RETENTION_DAYS: Anzahl der Tage, nach denen alte Backups gelöscht werden (Standard: 7)
-# - GZIP_COMPRESSION_LEVEL: Kompressionsstufe für gzip (Standard: 6)
-# - ENCRYPT_BACKUPS: Ob Backups verschlüsselt werden sollen (yes/no, Standard: no)
-# - GPG_KEY_ID: GPG-Schlüssel-ID für die Verschlüsselung (falls ENCRYPT_BACKUPS=yes)
-# - BACKUP_TIME: Zeit für geplante Backups (Standard: 02:00)
-#
-# Befehle:
-# - backup: Erstellt ein Backup der Datenbank.
-# - restore: Stellt eine Datenbank aus einem Backup wieder her.
-# - configure: Konfiguriert die Einstellungen des Skripts.
-# - update: Aktualisiert das Skript auf die neueste Version.
-# - version: Zeigt die aktuelle Version des Skripts an.
-# - check-updates: Überprüft auf Updates für das Skript.
-# - install: Installiert das Skript und richtet den Service ein.
-# - uninstall: Deinstalliert das Skript und entfernt den Service.
-# - help: Zeigt diese Hilfe an.
