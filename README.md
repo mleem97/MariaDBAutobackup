@@ -2,6 +2,8 @@
 
 Ein Skript, das automatische Backups einer MariaDB/MySQL-Datenbank ermöglicht.
 
+For English, please refer to the Wiki.
+
 ## Übersicht
 
 MariaDBAutobackup ist ein Shell-Skript, das entwickelt wurde, um regelmäßige Backups einer MariaDB/MySQL-Datenbank zu automatisieren. Es erleichtert die Sicherung und Wiederherstellung von Datenbanken, um den Verlust wichtiger Daten zu verhindern. Es bietet erweiterte Funktionen wie Verschlüsselung, Bereinigung alter Backups, verschiedene Backup-Typen und Remote-Backup-Optionen.
