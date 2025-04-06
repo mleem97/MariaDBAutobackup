@@ -1,1 +1,71 @@
 .vscode/launch.json
+
+# Umgebungsvariablen und Konfigurationsdateien
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+config.json
+credentials.json
+secrets.json
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Abhängigkeiten
+node_modules/
+vendor/
+.pnp/
+.pnp.js
+
+# Build-Verzeichnisse
+build/
+dist/
+out/
+target/
+
+# Cache-Dateien
+.cache/
+.npm/
+.eslintcache
+.parcel-cache/
+
+# Betriebssystem-spezifische Dateien
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporäre Dateien
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# IDE-spezifische Dateien
+.idea/
+*.sublime-*
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+
+# Backup-Dateien
+backup/
+*.backup
+*.sql
+*.dump
+
+# Persönliche Notizen
+TODO.md
+NOTES.md
