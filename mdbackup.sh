@@ -23,10 +23,6 @@ VERSION="1.2.0"
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/main/version.txt"
 REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/main/mdbackup.sh"
 
-# Note: Ensure the script has executable permissions before running:
-#       chmod +x mdbackup.sh
-#       ./mdbackup.sh [command]
-
 # Konfigurationsdatei
 CONFIG_FILE="/etc/mdbackup.conf"
 LOCAL_CONFIG_FILE="$(dirname "$0")/mdbackup.conf"
