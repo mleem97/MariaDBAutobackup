@@ -59,7 +59,10 @@ MariaDBAutobackup ist ein Shell-Skript, das entwickelt wurde, um regelmäßige B
     BACKUP_DIR="/var/lib/mysql-backups"
     LOG_FILE="/var/log/mdbackup.log"
     BACKUP_RETENTION_DAYS="7"
-    GZIP_COMPRESSION_LEVEL="6"
+
+    # Komprimierungs-Einstellungen
+    COMPRESSION_ALGORITHM="gzip"
+    COMPRESSION_LEVEL="6"
 
     # Verschlüsselungs-Einstellungen
     ENCRYPT_BACKUPS="no"
@@ -77,6 +80,11 @@ MariaDBAutobackup ist ein Shell-Skript, das entwickelt wurde, um regelmäßige B
     # Cloud-Einstellungen
     REMOTE_CLOUD_CLI=""
     REMOTE_CLOUD_BUCKET=""
+    
+    # SSH Tunnel-Einstellungen (für Remote-Datenbanken)
+    SSH_USER=""
+    SSH_HOST=""
+    SSH_PORT="22"
     ```
 
 ## Verwendung
@@ -101,6 +109,18 @@ Das Skript unterstützt die folgenden Befehle:
   ```
   Konfiguriert die Einstellungen des Skripts.
 
+- **Komprimierungseinstellungen konfigurieren**:
+  ```sh
+  mdbackup configure-compression
+  ```
+  Konfiguriert speziell die Komprimierungseinstellungen.
+
+- **Service erstellen**:
+  ```sh
+  mdbackup create-service
+  ```
+  Erstellt einen systemd-Service und Timer für automatische Backups.
+
 - **Skript aktualisieren**:
   ```sh
   mdbackup update
@@ -111,7 +131,7 @@ Das Skript unterstützt die folgenden Befehle:
   ```sh
   mdbackup version
   ```
-  Zeigt die aktuelle Version des Skripts an.
+  Zeigt die aktuelle Version des Skripts an (aktuell 1.2.0).
 
 - **Updates überprüfen**:
   ```sh
@@ -130,6 +150,12 @@ Das Skript unterstützt die folgenden Befehle:
   mdbackup uninstall
   ```
   Deinstalliert das Skript und entfernt den Service.
+
+- **Backup-Integrität prüfen**:
+  ```sh
+  mdbackup verify
+  ```
+  Überprüft die Integrität eines Backups anhand von Checksummen.
 
 - **Hilfe anzeigen**:
   ```sh
@@ -173,9 +199,12 @@ sudo systemctl status mdbackup.timer
 - **Fortschrittsanzeige**: Visualisiert den Backup-Fortschritt bei längeren Prozessen.
 - **Automatische Updates**: Überprüft regelmäßig auf Updates des Skripts.
 - **Konfigurationsprüfung**: Validiert die Konfigurationsdatei vor dem Ausführen von Backups.
+- **Remote-Datenbankunterstützung**: Verbindet sich mit Remote-Datenbanken, optional über SSH-Tunnel.
+- **Komprimierungsoptionen**: Unterstützt verschiedene Algorithmen (gzip, bzip2, xz) mit einstellbaren Komprimierungsleveln.
+- **Integritätsprüfung**: Erstellt und überprüft Checksummen für alle Backup-Dateien.
 
 ## Hinweise
-- Das Skript ist derzeit in Version 1.1.5.
+- Das Skript ist derzeit in Version 1.2.0.
 - Bitte nutzt die **"Issues"** auf GitHub um Fehler zu melden oder Verbesserungsvorschläge einzureichen.
 
 ## Beitragende
