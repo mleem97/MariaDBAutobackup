@@ -98,7 +98,7 @@ check_mariadb_mysql_installed() {
     else
         echo "MySQL/MariaDB is not installed. Please install it first."
         exit 1
-    }
+    fi
 }
 
 # Funktion zur Überprüfung von Abhängigkeiten
