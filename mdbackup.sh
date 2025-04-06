@@ -19,7 +19,7 @@
 # Lizenz: GNU General Public License v3.0
 
 # Versionsinfo
-VERSION="1.1.7"
+VERSION="1.1.9"
 REMOTE_VERSION_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/main/version.txt"
 REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/main/mdbackup.sh"
 
@@ -51,6 +51,7 @@ load_config() {
     ENCRYPT_BACKUPS="${ENCRYPT_BACKUPS:-no}"
     GPG_KEY_ID="${GPG_KEY_ID:-}"
     BACKUP_TIME="${BACKUP_TIME:-02:00}"
+    REMOTE_BACKUP_ENABLED="${REMOTE_BACKUP_ENABLED:-no}"
 }
 
 # Konfiguration laden
@@ -236,9 +237,11 @@ validate_config() {
 encrypt_backup() {
     if [ "$ENCRYPT_BACKUPS" == "yes" ] && [ -n "$GPG_KEY_ID" ]; then
         echo "Encrypting backups with GPG key ID: $GPG_KEY_ID..." | tee -a "$LOG_FILE"
-        for file in "$BACKUP_PATH"/*.sql.gz; do
-            gpg --encrypt --recipient "$GPG_KEY_ID" "$file" && rm "$file"
-            echo "Backup file $file encrypted." | tee -a "$LOG_FILE"
+        find "$BACKUP_PATH" -type f -name "*.sql.gz" | while read -r file; do
+            if [ -f "$file" ]; then
+                gpg --encrypt --recipient "$GPG_KEY_ID" "$file" && rm "$file"
+                echo "Backup file $file encrypted." | tee -a "$LOG_FILE"
+            fi
         done
     elif [ "$ENCRYPT_BACKUPS" == "yes" ] && [ -z "$GPG_KEY_ID" ]; then
         echo "Warning: Encryption is enabled but GPG key ID is not set. Skipping encryption." | tee -a "$LOG_FILE"
@@ -250,9 +253,15 @@ decrypt_backup() {
     read -p "Do you need to decrypt the backup? (yes/no): " decrypt_choice
     if [ "$decrypt_choice" == "yes" ]; then
         echo "Decrypting backup files..." | tee -a "$LOG_FILE"
-        for file in "$BACKUP_PATH"/*.sql.gz.gpg; do
-            gpg --decrypt --output "${file%.gpg}" "$file" && rm "$file"
-            echo "Backup file $file decrypted." | tee -a "$LOG_FILE"
+        # Korrigierter Dateimuster-Check
+        for file in "$BACKUP_PATH"/*.gpg; do
+            if [ -f "$file" ]; then
+                gpg --decrypt --output "${file%.gpg}" "$file" && rm "$file"
+                echo "Backup file $file decrypted." | tee -a "$LOG_FILE"
+            else
+                echo "No encrypted files found." | tee -a "$LOG_FILE"
+            fi
+            break
         done
     fi
 }
@@ -265,7 +274,7 @@ run_command() {
     if [ "$TEST_MODE" == "true" ]; then
         echo "[TEST MODE] $*"
     else
-        eval "$@"
+        "$@"
     fi
 }
 
@@ -401,21 +410,21 @@ perform_backup() {
     case $backup_type in
         full)
             echo "Performing full backup..." | tee -a "$LOG_FILE"
-            mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" --all-databases > "$BACKUP_PATH/all-databases.sql" || handle_error "Full backup failed!"
+            mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") --all-databases > "$BACKUP_PATH/all-databases.sql" || handle_error "Full backup failed!"
             ;;
         differential)
             if [ -z "$last_full_backup" ]; then
                 handle_error "No previous full backup found. Please perform a full backup first."
             fi
             echo "Performing differential backup since $last_full_backup..." | tee -a "$LOG_FILE"
-            mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" --all-databases --flush-logs --master-data=2 --single-transaction --incremental-base-dir="$last_full_backup" > "$BACKUP_PATH/differential.sql" || handle_error "Differential backup failed!"
+            mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") --all-databases --flush-logs --master-data=2 --single-transaction --incremental-base-dir="$last_full_backup" > "$BACKUP_PATH/differential.sql" || handle_error "Differential backup failed!"
             ;;
         incremental)
             if [ -z "$last_backup" ]; then
                 handle_error "No previous backup found. Please perform a full or differential backup first."
             fi
             echo "Performing incremental backup since $last_backup..." | tee -a "$LOG_FILE"
-            mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" --all-databases --flush-logs --master-data=2 --single-transaction --incremental-base-dir="$last_backup" > "$BACKUP_PATH/incremental.sql" || handle_error "Incremental backup failed!"
+            mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") --all-databases --flush-logs --master-data=2 --single-transaction --incremental-base-dir="$last_backup" > "$BACKUP_PATH/incremental.sql" || handle_error "Incremental backup failed!"
             ;;
         *)
             handle_error "Invalid backup type specified. Use 'full', 'differential', or 'incremental'."
@@ -426,6 +435,10 @@ perform_backup() {
     compress_backup "$BACKUP_PATH" "$COMPRESSION_ALGORITHM" "$COMPRESSION_LEVEL"
     # Berechne und speichere Prüfsummen für die Backup-Dateien
     calculate_checksum "$BACKUP_PATH"
+    
+    # Verschlüssele die Backup-Dateien, wenn aktiviert
+    encrypt_backup
+    
     chown -R mysql:mysql "$BACKUP_PATH"
     chmod -R 755 "$BACKUP_PATH"
     echo "Backup completed: $BACKUP_PATH" | tee -a "$LOG_FILE"
@@ -474,6 +487,13 @@ transfer_backup_to_remote() {
     fi
 
     echo "Transferring backup to remote storage..." | tee -a "$LOG_FILE"
+
+    # Überprüfe, ob mindestens eine Remote-Backup-Methode konfiguriert ist
+    if [ -z "$REMOTE_NFS_MOUNT" ] && [ -z "$REMOTE_RSYNC_TARGET" ] && 
+       [ -z "$REMOTE_CLOUD_CLI" ] || [ -z "$REMOTE_CLOUD_BUCKET" ]; then
+        echo "Warning: Remote backup is enabled but no valid method is configured." | tee -a "$LOG_FILE"
+        return
+    fi
 
     if [ -n "$REMOTE_NFS_MOUNT" ]; then
         echo "Using NFS mount: $REMOTE_NFS_MOUNT" | tee -a "$LOG_FILE"
@@ -541,7 +561,10 @@ restore() {
         handle_error "Backup folder not found."
     fi
 
-    if [ ! -f "$BACKUP_PATH/all-databases.sql.gz" ] && [ ! -f "$BACKUP_PATH/*.sql.gz.gpg" ] && [ ! -f "$BACKUP_PATH/*.sql.gz" ]; then
+    # Verbesserte Prüfung auf gültige Backup-Dateien
+    if ! ls "$BACKUP_PATH"/*.sql.gz >/dev/null 2>&1 && 
+       ! ls "$BACKUP_PATH"/*.sql.gz.gpg >/dev/null 2>&1 && 
+       ! ls "$BACKUP_PATH"/*.sql >/dev/null 2>&1; then
         handle_error "No valid backup files found in the specified directory."
     fi
 
@@ -550,10 +573,14 @@ restore() {
 
     echo "Restoring backup from $BACKUP_PATH..." | tee -a "$LOG_FILE"
     for file in "$BACKUP_PATH"/*.sql.gz; do
-        run_command gunzip -c "$file" | mysql -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" || handle_error "Restore failed for $file!"
+        if [ -f "$file" ]; then
+            run_command gunzip -c "$file" | mysql -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") || handle_error "Restore failed for $file!"
+        fi
     done
     for file in "$BACKUP_PATH"/*.sql; do
-        run_command mysql -h "$DATABASE_HOST" -u "$DATABASE_USER" "$DATABASE_PASSWORD" < "$file" || handle_error "Restore failed for $file!"
+        if [ -f "$file" ]; then
+            run_command mysql -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") < "$file" || handle_error "Restore failed for $file!"
+        fi
     done
 
     chown -R mysql:mysql /var/lib/mysql
@@ -894,3 +921,22 @@ case "$1" in
         exit 1
         ;;
 esac
+
+check_free_space() {
+    # Mindestens erforderlicher freier Speicherplatz (in KB)
+    local required_space=524288  # 512MB
+    
+    # Verfügbarer Speicherplatz auf dem Backup-Laufwerk
+    local available_space=$(df -P "$BACKUP_DIR" | awk 'NR==2 {print $4}')
+    
+    if [ "$available_space" -lt "$required_space" ]; then
+        echo "Warning: Less than 512MB free space available on backup directory." | tee -a "$LOG_FILE"
+        echo "Available: $(( available_space / 1024 ))MB, Required: $(( required_space / 1024 ))MB" | tee -a "$LOG_FILE"
+        read -p "Continue anyway? [y/N]: " choice
+        if [[ ! "$choice" =~ ^[Yy] ]]; then
+            echo "Backup aborted due to insufficient disk space." | tee -a "$LOG_FILE"
+            exit 1
+        fi
+    fi
+    echo "Sufficient disk space available: $(( available_space / 1024 ))MB" | tee -a "$LOG_FILE"
+}
