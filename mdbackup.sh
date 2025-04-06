@@ -1,11 +1,31 @@
 #!/bin/bash
+#
+# MariaDBAutobackup (Version 1.1.5)
+# Ein umfassendes Skript für die automatisierte Sicherung und Wiederherstellung von MariaDB/MySQL-Datenbanken
+#
+# Features:
+# - Verschiedene Backup-Typen: vollständig, differentiell, inkrementell, tabellen-spezifisch
+# - Integritätsprüfung mit Checksummen
+# - Konfigurierbare Komprimierung (gzip, bzip2, xz)
+# - Verschlüsselung mit GPG
+# - Remote-Backups (NFS, rsync, Cloud-Speicher)
+# - Pre- und Post-Backup-Hooks
+# - Automatische Bereinigung alter Backups
+# - Fortschrittsanzeige
+# - Umfassende Voraussetzungsprüfung
+#
+# Autor: mleem97 (https://github.com/mleem97)
+# Repository: https://github.com/mleem97/MariaDBAutobackup
+# Lizenz: GNU General Public License v3.0
+
+# Versionsinfo
+VERSION="1.1.7"
+REMOTE_VERSION_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/main/version.txt"
+REMOTE_SCRIPT_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/main/mdbackup.sh"
 
 # Note: Ensure the script has executable permissions before running:
 #       chmod +x mdbackup.sh
 #       ./mdbackup.sh [command]
-
-VERSION="1.1.7" # Aktualisierte Skriptversion
-REMOTE_VERSION_URL="https://raw.githubusercontent.com/mleem97/MariaDBAutobackup/refs/heads/main/version.txt"
 
 # Konfigurationsdatei
 CONFIG_FILE="/etc/mdbackup.conf"
@@ -13,9 +33,9 @@ LOCAL_CONFIG_FILE="$(dirname "$0")/mdbackup.conf"
 
 # Funktion zum Laden der Konfiguration
 load_config() {
-    if [ -f "$CONFIG_FILE" ]; then
+    if [ -f "$CONFIG_FILE" ];then
         source "$CONFIG_FILE"
-    elif [ -f "$LOCAL_CONFIG_FILE" ]; then
+    elif [ -f "$LOCAL_CONFIG_FILE" ];then
         source "$LOCAL_CONFIG_FILE"
     else
         echo "Warning: Configuration file not found. Using default values."
@@ -423,7 +443,11 @@ backup_specific_tables() {
     echo "Backing up tables [$table_names] from database [$database_name]..." | tee -a "$LOG_FILE"
     mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$database_name" $table_names > "$BACKUP_PATH/tables.sql" || handle_error "Backup of specific tables failed!"
 
-    gzip -"$GZIP_COMPRESSION_LEVEL" "$BACKUP_PATH/tables.sql"
+    # Korrigiert: Verwendet den konfigurierten Komprimierungsalgorithmus und -level
+    compress_backup "$BACKUP_PATH" "$COMPRESSION_ALGORITHM" "$COMPRESSION_LEVEL"
+    # Berechnet Prüfsummen für die Backup-Dateien
+    calculate_checksum "$BACKUP_PATH"
+    
     chown -R mysql:mysql "$BACKUP_PATH"
     chmod -R 755 "$BACKUP_PATH"
     echo "Backup of specific tables completed: $BACKUP_PATH" | tee -a "$LOG_FILE"
@@ -654,7 +678,7 @@ check_prerequisites() {
         mkdir -p "$BACKUP_DIR" || handle_error "Failed to create backup directory: $BACKUP_DIR"
     fi
     # Teste Schreibrechte im Backup-Verzeichnis
-    if [ ! -w "$BACKUP_DIR" ]; then
+    if [ ! -w "$BACKUP_DIR" ];then
         handle_error "No write permission to backup directory: $BACKUP_DIR"
     fi
     echo "✅ Backup directory is writable." | tee -a "$LOG_FILE"
@@ -693,16 +717,148 @@ check_prerequisites() {
     echo "All prerequisites checked and satisfied." | tee -a "$LOG_FILE"
 }
 
+# Funktion zur Konfiguration der Anwendung
+configure() {
+    echo "MariaDB Autobackup Configuration"
+    echo "================================"
+    # Datenbankeinstellungen
+    read -p "Database host [${DATABASE_HOST}]: " input_host
+    DATABASE_HOST=${input_host:-$DATABASE_HOST}
+    read -p "Database user [${DATABASE_USER}]: " input_user
+    DATABASE_USER=${input_user:-$DATABASE_USER}
+    read -p "Database password (leave empty for no password): " input_password
+    DATABASE_PASSWORD=${input_password:-$DATABASE_PASSWORD}
+    # Backup-Einstellungen
+    read -p "Backup directory [${BACKUP_DIR}]: " input_backup_dir
+    BACKUP_DIR=${input_backup_dir:-$BACKUP_DIR}
+    read -p "Log file [${LOG_FILE}]: " input_log_file
+    LOG_FILE=${input_log_file:-$LOG_FILE}
+    read -p "Backup retention days [${BACKUP_RETENTION_DAYS}]: " input_retention
+    BACKUP_RETENTION_DAYS=${input_retention:-$BACKUP_RETENTION_DAYS}
+    # Verschlüsselungseinstellungen
+    read -p "Encrypt backups (yes/no) [${ENCRYPT_BACKUPS}]: " input_encrypt
+    ENCRYPT_BACKUPS=${input_encrypt:-$ENCRYPT_BACKUPS}
+    if [ "$ENCRYPT_BACKUPS" == "yes" ]; then
+        read -p "GPG key ID [${GPG_KEY_ID}]: " input_gpg_key
+        GPG_KEY_ID=${input_gpg_key:-$GPG_KEY_ID}
+    fi
+    # Zeitplaneinstellungen
+    read -p "Backup time (HH:MM) [${BACKUP_TIME}]: " input_time
+    BACKUP_TIME=${input_time:-$BACKUP_TIME}
+    # Remote Backup-Einstellungen
+    read -p "Enable remote backup (yes/no) [${REMOTE_BACKUP_ENABLED:-no}]: " input_remote
+    REMOTE_BACKUP_ENABLED=${input_remote:-${REMOTE_BACKUP_ENABLED:-no}}
+    
+    if [ "$REMOTE_BACKUP_ENABLED" == "yes" ]; then
+        echo "Select remote backup type:"
+        echo "1) NFS Mount"
+        echo "2) Rsync Target"
+        echo "3) Cloud Storage"
+        read -p "Choose a type [1-3]: " remote_type
+        
+        case $remote_type in
+            1)
+                read -p "NFS mount point: " REMOTE_NFS_MOUNT
+                REMOTE_RSYNC_TARGET=""
+                REMOTE_CLOUD_CLI=""
+                REMOTE_CLOUD_BUCKET=""
+                ;;
+            2)
+                read -p "Rsync target (user@host:/path): " REMOTE_RSYNC_TARGET
+                REMOTE_NFS_MOUNT=""
+                REMOTE_CLOUD_CLI=""
+                REMOTE_CLOUD_BUCKET=""
+                ;;
+            3)
+                read -p "Cloud CLI command (aws, gsutil, etc): " REMOTE_CLOUD_CLI
+                read -p "Cloud bucket path (s3://bucket, gs://bucket): " REMOTE_CLOUD_BUCKET
+                REMOTE_NFS_MOUNT=""
+                REMOTE_RSYNC_TARGET=""
+                ;;
+            *)
+                echo "Invalid choice. Remote backup will be disabled."
+                REMOTE_BACKUP_ENABLED="no"
+                ;;
+        esac
+    fi
+    
+    # Komprimierungseinstellungen
+    echo "Select compression algorithm:"
+    echo "1) gzip (fastest, moderate compression)"
+    echo "2) bzip2 (slower, better compression)"
+    echo "3) xz (slowest, best compression)"
+    read -p "Choose algorithm [1-3] [1]: " comp_choice
+    
+    case ${comp_choice:-1} in
+        1)
+            COMPRESSION_ALGORITHM="gzip"
+            ;;
+        2)
+            COMPRESSION_ALGORITHM="bzip2"
+            ;;
+        3)
+            COMPRESSION_ALGORITHM="xz"
+            ;;
+        *)
+            echo "Invalid choice. Using gzip."
+            COMPRESSION_ALGORITHM="gzip"
+            ;;
+    esac
+    
+    read -p "Compression level (1-9) [${COMPRESSION_LEVEL:-6}]: " comp_level
+    COMPRESSION_LEVEL=${comp_level:-${COMPRESSION_LEVEL:-6}}
+    
+    # Konfiguration speichern
+    echo "Saving configuration to $CONFIG_FILE..."
+    
+    # Stellen Sie sicher, dass das Verzeichnis existiert
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    
+    # Erstellen oder aktualisieren Sie die Konfigurationsdatei
+    cat > "$CONFIG_FILE" << EOF
+# MariaDB Autobackup Configuration
+# Generated on $(date)
+
+# Database Settings
+DATABASE_HOST="$DATABASE_HOST"
+DATABASE_USER="$DATABASE_USER"
+DATABASE_PASSWORD="$DATABASE_PASSWORD"
+
+# Backup Settings
+BACKUP_DIR="$BACKUP_DIR"
+LOG_FILE="$LOG_FILE"
+BACKUP_RETENTION_DAYS="$BACKUP_RETENTION_DAYS"
+
+# Compression Settings
+COMPRESSION_ALGORITHM="$COMPRESSION_ALGORITHM"
+COMPRESSION_LEVEL="$COMPRESSION_LEVEL"
+
+# Encryption Settings
+ENCRYPT_BACKUPS="$ENCRYPT_BACKUPS"
+GPG_KEY_ID="$GPG_KEY_ID"
+
+# Schedule Settings
+BACKUP_TIME="$BACKUP_TIME"
+
+# Remote Backup Settings
+REMOTE_BACKUP_ENABLED="$REMOTE_BACKUP_ENABLED"
+REMOTE_NFS_MOUNT="$REMOTE_NFS_MOUNT"
+REMOTE_RSYNC_TARGET="$REMOTE_RSYNC_TARGET"
+REMOTE_CLOUD_CLI="$REMOTE_CLOUD_CLI"
+REMOTE_CLOUD_BUCKET="$REMOTE_CLOUD_BUCKET"
+EOF
+    
+    echo "Configuration has been saved."
+}
+
 # Erweiterung der Hauptfunktion für die neue Backup-Integritätsprüfung
 case "$1" in
-    backup|restore)
-        check_prerequisites
-        # ...existing code...
-        ;;
     backup)
+        check_prerequisites
         backup
         ;;
     restore)
+        check_prerequisites
         restore
         ;;
     configure)
