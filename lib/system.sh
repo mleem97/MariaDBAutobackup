@@ -29,6 +29,23 @@ install_script() {
     sudo mkdir -p "$(dirname "$script_path")/lib"
     sudo cp -r "$LIB_DIR"/* "$(dirname "$script_path")/lib/"
 
+    # Stellen sicher, dass die Konfigurationsdatei in /etc existiert
+    local system_config_file="/etc/mdbackup.conf"
+    if [ ! -f "$system_config_file" ]; then
+        echo "Kopiere Konfigurationsdatei nach $system_config_file..."
+        sudo cp "$CONFIG_FILE" "$system_config_file"
+    fi
+
+    # Setze LOG_FILE auf einen Standardwert für den systemd-Service
+    if [ -z "$LOG_FILE" ]; then
+        LOG_FILE="/var/log/mdbackup.log"
+    fi
+
+    # Setze BACKUP_TIME auf einen Standardwert für den systemd-Timer
+    if [ -z "$BACKUP_TIME" ]; then
+        BACKUP_TIME="02:00"
+    fi
+
     # Prüfen, ob der Service bereits existiert
     if [ -f "$service_file" ]; then
         echo "Der systemd-Service existiert bereits und wird aktualisiert."
@@ -39,16 +56,19 @@ install_script() {
     echo "[Unit]" | sudo tee "$service_file"
     echo "Description=MariaDB/MySQL Automatic Backup Service" | sudo tee -a "$service_file"
     echo "After=network.target mysql.service mariadb.service" | sudo tee -a "$service_file"
-    echo "Requires=mysql.service mariadb.service" | sudo tee -a "$service_file"
+    echo "Wants=mysql.service mariadb.service" | sudo tee -a "$service_file"
     echo "" | sudo tee -a "$service_file"
     echo "[Service]" | sudo tee -a "$service_file"
     echo "User=root" | sudo tee -a "$service_file"
     echo "Group=root" | sudo tee -a "$service_file"
     echo "Type=oneshot" | sudo tee -a "$service_file"
-    echo "EnvironmentFile=$CONFIG_FILE" | sudo tee -a "$service_file"
+    echo "EnvironmentFile=$system_config_file" | sudo tee -a "$service_file"
     echo "ExecStart=$script_path backup" | sudo tee -a "$service_file"
-    echo "StandardOutput=append:%LOG_FILE%" | sudo tee -a "$service_file"
-    echo "StandardError=append:%LOG_FILE%" | sudo tee -a "$service_file"
+    echo "StandardOutput=append:$LOG_FILE" | sudo tee -a "$service_file"
+    echo "StandardError=append:$LOG_FILE" | sudo tee -a "$service_file"
+    echo "" | sudo tee -a "$service_file"
+    echo "[Install]" | sudo tee -a "$service_file"
+    echo "WantedBy=multi-user.target" | sudo tee -a "$service_file"
 
     # Prüfen, ob der Timer bereits existiert
     if [ -f "$timer_file" ]; then
@@ -59,11 +79,10 @@ install_script() {
     
     echo "[Unit]" | sudo tee "$timer_file"
     echo "Description=Daily MariaDB/MySQL Backup Timer" | sudo tee -a "$timer_file"
-    echo "After=mdbackup.service" | sudo tee -a "$timer_file"
+    echo "After=network.target" | sudo tee -a "$timer_file"
     echo "" | sudo tee -a "$timer_file"
     echo "[Timer]" | sudo tee -a "$timer_file"
-    echo "Unit=mdbackup.service" | sudo tee -a "$timer_file"
-    echo "OnCalendar=*-*-*:%BACKUP_TIME%" | sudo tee -a "$timer_file"
+    echo "OnCalendar=*-*-* $BACKUP_TIME" | sudo tee -a "$timer_file"
     echo "Persistent=true" | sudo tee -a "$timer_file"
     echo "" | sudo tee -a "$timer_file"
     echo "[Install]" | sudo tee -a "$timer_file"
@@ -74,7 +93,7 @@ install_script() {
     sudo systemctl enable mdbackup.timer
     sudo systemctl start mdbackup.timer
 
-    echo "Installation abgeschlossen. Das tägliche Backup wird zur in $CONFIG_FILE angegebenen Zeit ausgeführt."
+    echo "Installation abgeschlossen. Das tägliche Backup wird um $BACKUP_TIME Uhr ausgeführt."
 }
 
 # Funktion zur Deinstallation des Skripts und der Systemd-Dateien
