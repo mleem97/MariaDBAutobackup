@@ -1,0 +1,28 @@
+Source: mdbackup
+Section: admin
+Priority: optional
+Maintainer: mleem97 <mleem97@github.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.5.1
+Homepage: https://github.com/mleem97/MariaDBAutobackup
+Vcs-Browser: https://github.com/mleem97/MariaDBAutobackup
+Vcs-Git: https://github.com/mleem97/MariaDBAutobackup.git
+
+Package: mdbackup
+Architecture: all
+Depends: ${misc:Depends}, mariadb-client | mysql-client, gzip, bzip2, xz-utils, gnupg
+Recommends: mariadb-server | mysql-server
+Description: Comprehensive MariaDB/MySQL backup solution
+ MariaDBAutobackup provides an automated backup and recovery solution
+ for MariaDB/MySQL databases with the following features:
+ .
+ * Full, differential, and incremental backups
+ * Table-specific backups
+ * Backup integrity verification with checksums
+ * Configurable compression (gzip, bzip2, xz)
+ * Encryption with GPG
+ * Remote backups (NFS, rsync, Cloud storage)
+ * Pre- and post-backup hooks
+ * Automatic cleanup of old backups
+ * Progress display
+ * Comprehensive prerequisite checking

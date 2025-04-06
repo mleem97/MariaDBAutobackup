@@ -1,0 +1,43 @@
+#!/bin/sh
+set -e
+
+# Standardverzeichnisse und Berechtigungen erstellen
+mkdir -p /var/lib/mysql-backups
+touch /var/log/mdbackup.log
+
+# Berechtigungen setzen
+chown -R mysql:mysql /var/lib/mysql-backups
+chmod 755 /var/lib/mysql-backups
+chown root:adm /var/log/mdbackup.log
+chmod 640 /var/log/mdbackup.log
+
+# Konfigurationsdatei kopieren, wenn sie noch nicht existiert
+if [ ! -f /etc/mdbackup.conf ]; then
+    cp /usr/share/mdbackup/mdbackup.conf.default /etc/mdbackup.conf
+    chmod 640 /etc/mdbackup.conf
+fi
+
+# Systemd neu laden
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    # Timer nicht automatisch aktivieren, überlassen wir dem Benutzer
+    echo "To enable automatic backups, run: systemctl enable --now mdbackup.timer"
+fi
+
+# Ausgabe der Installationshinweise
+cat <<EOF
+MariaDBAutobackup wurde installiert.
+
+Konfigurationsdatei: /etc/mdbackup.conf
+Backup-Verzeichnis: /var/lib/mysql-backups
+Log-Datei: /var/log/mdbackup.log
+
+Führe folgende Befehle aus, um die automatischen Backups zu aktivieren:
+  systemctl enable mdbackup.timer
+  systemctl start mdbackup.timer
+
+Für ein manuelles Backup verwende:
+  mdbackup backup
+EOF
+
+# dh_installdeb wird automatisch ein Exit 0 am Ende der Datei hinzufügen

@@ -1,0 +1,7 @@
+mdbackup (1.2.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging
+  * Added systemd service and timer
+  * Default configuration included
+
+ -- mleem97 <mleem97@github.com>  $(date -R)

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily MariaDB/MySQL Backup Timer
+After=network.target
+
+[Timer]
+OnCalendar=*-*-* 02:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

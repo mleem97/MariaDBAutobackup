@@ -1,0 +1,18 @@
+[Unit]
+Description=MariaDB/MySQL Automatic Backup Service
+After=network.target mysql.service mariadb.service
+Wants=mysql.service mariadb.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/mdbackup backup
+StandardOutput=append:/var/log/mdbackup.log
+StandardError=append:/var/log/mdbackup.log
+SuccessExitStatus=0
+TimeoutStartSec=1200
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
