@@ -61,6 +61,7 @@ desktop.ini
 !.vscode/extensions.json
 
 # Backup-Dateien
+*.bak
 backup/
 *.backup
 *.sql
