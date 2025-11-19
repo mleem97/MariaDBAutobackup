@@ -410,7 +410,6 @@ check_for_updates() {
         echo "Neither curl nor wget is installed. Cannot check for updates." | tee -a "$LOG_FILE"
         return 1
     fi
-    }
     
     # Prüfung, ob die Remote-Version erfolgreich abgerufen wurde
     if [ -z "$remote_version" ]; then
