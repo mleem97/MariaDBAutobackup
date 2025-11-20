@@ -207,7 +207,7 @@ install() {
 
 # Funktion zur Erstellung des Systemd-Services
 create_service() {
-    echo "Creating and configuring systemd service for mdbackup..." | tee -a "$LOG_FILE"
+    echo "Creating and configuring systemd service for mdbackup..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     local script_path="/usr/local/bin/mdbackup"
     local service_file="/etc/systemd/system/mdbackup.service"
@@ -215,12 +215,12 @@ create_service() {
     
     # Prüfe, ob systemd verfügbar ist
     if ! command -v systemctl &> /dev/null; then
-        echo "Error: systemd is not available on this system. Cannot create service." | tee -a "$LOG_FILE"
+        echo "Error: systemd is not available on this system. Cannot create service." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         return 1
     fi
     
     # Service-Datei erstellen oder aktualisieren
-    echo "Creating systemd service file at $service_file..." | tee -a "$LOG_FILE"
+    echo "Creating systemd service file at $service_file..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     cat > /tmp/mdbackup.service << EOF
 [Unit]
@@ -246,7 +246,7 @@ EOF
     sudo mv /tmp/mdbackup.service "$service_file"
     
     # Timer-Datei erstellen oder aktualisieren
-    echo "Creating systemd timer file at $timer_file..." | tee -a "$LOG_FILE"
+    echo "Creating systemd timer file at $timer_file..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     # Lese die BACKUP_TIME aus der Konfiguration
     BACKUP_TIME="${BACKUP_TIME:-02:00}"
@@ -268,26 +268,26 @@ EOF
     sudo mv /tmp/mdbackup.timer "$timer_file"
     
     # systemd neu laden
-    echo "Reloading systemd configuration..." | tee -a "$LOG_FILE"
+    echo "Reloading systemd configuration..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     sudo systemctl daemon-reload
     
     # Timer aktivieren und starten
-    echo "Enabling and starting mdbackup timer..." | tee -a "$LOG_FILE"
+    echo "Enabling and starting mdbackup timer..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     sudo systemctl enable mdbackup.timer
     sudo systemctl start mdbackup.timer
     
     # Servicesstatus anzeigen
-    echo "Service information:" | tee -a "$LOG_FILE"
-    echo "-------------------" | tee -a "$LOG_FILE"
-    echo "Next execution time:" | tee -a "$LOG_FILE"
+    echo "Service information:" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+    echo "-------------------" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+    echo "Next execution time:" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     sudo systemctl list-timers mdbackup.timer | grep mdbackup || echo "Timer not found."
     
     # Überprüfen, ob der Timer korrekt aktiviert wurde
     if sudo systemctl is-enabled --quiet mdbackup.timer; then
-        echo "✅ mdbackup service and timer successfully created and activated." | tee -a "$LOG_FILE"
-        echo "The backup will run daily at $BACKUP_TIME." | tee -a "$LOG_FILE"
+        echo "✅ mdbackup service and timer successfully created and activated." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+        echo "The backup will run daily at $BACKUP_TIME." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     else
-        echo "⚠️ Warning: Could not enable the timer service." | tee -a "$LOG_FILE"
+        echo "⚠️ Warning: Could not enable the timer service." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         return 1
     fi
     
@@ -296,19 +296,19 @@ EOF
 
 # Automatische Update-Funktion
 update_script() {
-    echo "Checking for updates..." | tee -a "$LOG_FILE"
+    echo "Checking for updates..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     local update_available=false
     check_for_updates && update_available=true
     
     if [ "$update_available" = false ]; then
-        echo "No updates available. Your script is already up to date." | tee -a "$LOG_FILE"
+        echo "No updates available. Your script is already up to date." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         return
     fi
     
     # Sicherstellen, dass wir ein Skript downloaden können
     if ! command -v curl &> /dev/null && ! command -v wget &> /dev/null; then
-        echo "Error: Neither curl nor wget is available. Cannot perform update." | tee -a "$LOG_FILE"
+        echo "Error: Neither curl nor wget is available. Cannot perform update." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         return 1
     fi
     
@@ -316,14 +316,14 @@ update_script() {
     local script_path="$(realpath "$0")"
     local backup_path="${script_path}.backup-$(date +%Y%m%d%H%M%S)"
     
-    echo "Creating backup of current script at $backup_path..." | tee -a "$LOG_FILE"
+    echo "Creating backup of current script at $backup_path..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     cp "$script_path" "$backup_path" || { 
-        echo "Failed to create backup. Aborting update." | tee -a "$LOG_FILE"
+        echo "Failed to create backup. Aborting update." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         return 1
     }
     
     # Download des neuen Skripts
-    echo "Downloading latest version..." | tee -a "$LOG_FILE"
+    echo "Downloading latest version..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     local temp_file=$(mktemp)
     
     if command -v curl &> /dev/null; then
@@ -334,7 +334,7 @@ update_script() {
     
     # Überprüfen, ob der Download erfolgreich war
     if [ ! -s "$temp_file" ]; then
-        echo "Failed to download the latest version. Restoring backup..." | tee -a "$LOG_FILE"
+        echo "Failed to download the latest version. Restoring backup..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         mv "$backup_path" "$script_path"
         rm -f "$temp_file"
         return 1
@@ -342,7 +342,7 @@ update_script() {
     
     # Überprüfen, ob das heruntergeladene Skript ein gültiges Bash-Skript ist
     if ! head -n 1 "$temp_file" | grep -q "#!/bin/bash"; then
-        echo "Downloaded file does not appear to be a valid bash script. Restoring backup..." | tee -a "$LOG_FILE"
+        echo "Downloaded file does not appear to be a valid bash script. Restoring backup..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         mv "$backup_path" "$script_path"
         rm -f "$temp_file"
         return 1
@@ -350,17 +350,17 @@ update_script() {
     
     # Vergleiche Versionsinformationen
     local new_version=$(grep "^VERSION=" "$temp_file" | head -n 1 | cut -d'"' -f2)
-    echo "New version: $new_version" | tee -a "$LOG_FILE"
+    echo "New version: $new_version" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     # Überschreibe das Skript mit der neuen Version
-    echo "Installing new version..." | tee -a "$LOG_FILE"
+    echo "Installing new version..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     mv "$temp_file" "$script_path"
     chmod +x "$script_path"
     
     # Überprüfe, ob eine Installation vorhanden ist und aktualisiere sie
     local installed_path="/usr/local/bin/mdbackup"
     if [ -f "$installed_path" ]; then
-        echo "Detected installed version. Updating system-wide installation..." | tee -a "$LOG_FILE"
+        echo "Detected installed version. Updating system-wide installation..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         
         # Überprüfe, ob wir sudo-Rechte haben oder das Skript als Root ausgeführt wird
         if [ "$(id -u)" -eq 0 ] || command -v sudo &> /dev/null; then
@@ -371,11 +371,11 @@ update_script() {
                 sudo cp "$script_path" "$installed_path"
                 sudo chmod +x "$installed_path"
             fi
-            echo "System-wide installation updated." | tee -a "$LOG_FILE"
+            echo "System-wide installation updated." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
             
             # Neustart des Timers, falls vorhanden
             if [ -f "/etc/systemd/system/mdbackup.timer" ]; then
-                echo "Restarting the mdbackup timer..." | tee -a "$LOG_FILE"
+                echo "Restarting the mdbackup timer..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
                 if [ "$(id -u)" -eq 0 ]; then
                     systemctl daemon-reload
                     systemctl restart mdbackup.timer
@@ -383,23 +383,23 @@ update_script() {
                     sudo systemctl daemon-reload
                     sudo systemctl restart mdbackup.timer
                 fi
-                echo "Timer restarted." | tee -a "$LOG_FILE"
+                echo "Timer restarted." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
             fi
         else
-            echo "Warning: Cannot update system-wide installation without sudo privileges." | tee -a "$LOG_FILE"
+            echo "Warning: Cannot update system-wide installation without sudo privileges." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         fi
     fi
     
-    echo "Update completed successfully!" | tee -a "$LOG_FILE"
-    echo "New version: $new_version" | tee -a "$LOG_FILE"
-    echo "Previous version: $VERSION" | tee -a "$LOG_FILE"
-    echo "Backup saved at: $backup_path" | tee -a "$LOG_FILE"
-    echo "To revert to the previous version, run: mv \"$backup_path\" \"$script_path\"" | tee -a "$LOG_FILE"
+    echo "Update completed successfully!" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+    echo "New version: $new_version" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+    echo "Previous version: $VERSION" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+    echo "Backup saved at: $backup_path" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+    echo "To revert to the previous version, run: mv \"$backup_path\" \"$script_path\"" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
 }
 
 # Funktion zur Überprüfung auf Updates
 check_for_updates() {
-    echo "Checking for updates..." | tee -a "$LOG_FILE"
+    echo "Checking for updates..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     # Prüfen, ob curl oder wget verfügbar ist
     if command -v curl &> /dev/null; then
@@ -407,25 +407,25 @@ check_for_updates() {
     elif command -v wget &> /dev/null; then
         local remote_version=$(wget -qO- "$REMOTE_VERSION_URL")
     else
-        echo "Neither curl nor wget is installed. Cannot check for updates." | tee -a "$LOG_FILE"
+        echo "Neither curl nor wget is installed. Cannot check for updates." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         return 1
     fi
     
     # Prüfung, ob die Remote-Version erfolgreich abgerufen wurde
     if [ -z "$remote_version" ]; then
-        echo "Failed to retrieve remote version information." | tee -a "$LOG_FILE"
+        echo "Failed to retrieve remote version information." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         return 1
     fi
     
-    echo "Current version: $VERSION" | tee -a "$LOG_FILE"
-    echo "Latest version: $remote_version" | tee -a "$LOG_FILE"
+    echo "Current version: $VERSION" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+    echo "Latest version: $remote_version" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     # Vergleichen der Versionen
     if [ "$remote_version" != "$VERSION" ]; then
-        echo "Update available: $remote_version" | tee -a "$LOG_FILE"
+        echo "Update available: $remote_version" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         return 0
     else
-        echo "You have the latest version." | tee -a "$LOG_FILE"
+        echo "You have the latest version." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         return 1
     fi
 }

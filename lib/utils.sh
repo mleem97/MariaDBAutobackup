@@ -23,7 +23,7 @@ show_help() {
 
 # Funktion zur Fehlerbehandlung
 handle_error() {
-    echo "Error: $1" | tee -a "$LOG_FILE"
+    echo "Error: $1" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     exit 1
 }
 

@@ -15,21 +15,21 @@ perform_backup() {
 
     case $backup_type in
         full)
-            echo "Performing full backup..." | tee -a "$LOG_FILE"
+            echo "Performing full backup..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
             mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") --all-databases > "$BACKUP_PATH/all-databases.sql" || handle_error "Full backup failed!"
             ;;
         differential)
             if [ -z "$last_full_backup" ]; then
                 handle_error "No previous full backup found. Please perform a full backup first."
             fi
-            echo "Performing differential backup since $last_full_backup..." | tee -a "$LOG_FILE"
+            echo "Performing differential backup since $last_full_backup..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
             mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") --all-databases --flush-logs --master-data=2 --single-transaction --incremental-base-dir="$last_full_backup" > "$BACKUP_PATH/differential.sql" || handle_error "Differential backup failed!"
             ;;
         incremental)
             if [ -z "$last_backup" ]; then
                 handle_error "No previous backup found. Please perform a full or differential backup first."
             fi
-            echo "Performing incremental backup since $last_backup..." | tee -a "$LOG_FILE"
+            echo "Performing incremental backup since $last_backup..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
             mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") --all-databases --flush-logs --master-data=2 --single-transaction --incremental-base-dir="$last_backup" > "$BACKUP_PATH/incremental.sql" || handle_error "Incremental backup failed!"
             ;;
         *)
@@ -47,7 +47,7 @@ perform_backup() {
     
     chown -R mysql:mysql "$BACKUP_PATH" 2>/dev/null || true
     chmod -R 755 "$BACKUP_PATH"
-    echo "Backup completed: $BACKUP_PATH" | tee -a "$LOG_FILE"
+    echo "Backup completed: $BACKUP_PATH" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
 }
 
 # Funktion zur Durchführung von Backups bestimmter Tabellen
@@ -59,7 +59,7 @@ backup_specific_tables() {
     BACKUP_PATH="$BACKUP_DIR/backup-tables-$TIMESTAMP"
     mkdir -p "$BACKUP_PATH"
 
-    echo "Backing up tables [$table_names] from database [$database_name]..." | tee -a "$LOG_FILE"
+    echo "Backing up tables [$table_names] from database [$database_name]..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     mysqldump -h "$DATABASE_HOST" -u "$DATABASE_USER" "$database_name" $table_names > "$BACKUP_PATH/tables.sql" || handle_error "Backup of specific tables failed!"
 
     # Korrigiert: Verwendet den konfigurierten Komprimierungsalgorithmus und -level
@@ -69,7 +69,7 @@ backup_specific_tables() {
     
     chown -R mysql:mysql "$BACKUP_PATH" 2>/dev/null || true
     chmod -R 755 "$BACKUP_PATH"
-    echo "Backup of specific tables completed: $BACKUP_PATH" | tee -a "$LOG_FILE"
+    echo "Backup of specific tables completed: $BACKUP_PATH" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
 }
 
 # Funktion zur Ausführung von Pre- und Post-Backup-Hooks
@@ -78,18 +78,18 @@ run_hooks() {
     local hook_script="${hook_type}_backup_hook.sh"
 
     if [ -f "$hook_script" ]; then
-        echo "Running $hook_type-backup hook..." | tee -a "$LOG_FILE"
+        echo "Running $hook_type-backup hook..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         bash "$hook_script" || handle_error "$hook_type-backup hook failed!"
     else
-        echo "No $hook_type-backup hook found. Skipping." | tee -a "$LOG_FILE"
+        echo "No $hook_type-backup hook found. Skipping." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     fi
 }
 
 # Funktion zur Bereinigung alter Backups
 cleanup_old_backups() {
-    echo "Cleaning up backups older than $BACKUP_RETENTION_DAYS days in $BACKUP_DIR..." | tee -a "$LOG_FILE"
-    find "$BACKUP_DIR" -type d -name "backup-*" -mtime +"$BACKUP_RETENTION_DAYS" -exec rm -rf {} \; | tee -a "$LOG_FILE"
-    echo "Old backups cleaned up." | tee -a "$LOG_FILE"
+    echo "Cleaning up backups older than $BACKUP_RETENTION_DAYS days in $BACKUP_DIR..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+    find "$BACKUP_DIR" -type d -name "backup-*" -mtime +"$BACKUP_RETENTION_DAYS" -exec rm -rf {} \; | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+    echo "Old backups cleaned up." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
 }
 
 # Erweiterung der Backup-Funktion zur Integration von Remote-Backups
@@ -129,7 +129,7 @@ backup() {
 
     # SSH-Tunnel schließen, falls er verwendet wurde
     if [ -n "$TUNNEL_PORT" ]; then
-        echo "Closing SSH tunnel..." | tee -a "$LOG_FILE"
+        echo "Closing SSH tunnel..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         pkill -f "ssh -f -N -L $TUNNEL_PORT:localhost:3306"
         DATABASE_HOST="$ORIGINAL_DB_HOST"
         unset TUNNEL_PORT

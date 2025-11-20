@@ -32,13 +32,13 @@ validate_config() {
         handle_error "Configuration is invalid. Please check $CONFIG_FILE."
     fi
     if [ "$ENCRYPT_BACKUPS" == "yes" ] && [ -z "$GPG_KEY_ID" ]; then
-        echo "Warning: Encryption is enabled but GPG key ID is not set in the configuration." | tee -a "$LOG_FILE"
+        echo "Warning: Encryption is enabled but GPG key ID is not set in the configuration." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     fi
 }
 
 # Konfigurationsprüfung
 validate_config_file() {
-    echo "Validating configuration file..." | tee -a "$LOG_FILE"
+    echo "Validating configuration file..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     if [ ! -f "$CONFIG_FILE" ] && [ ! -f "$LOCAL_CONFIG_FILE" ]; then
         handle_error "Configuration file not found."
     fi
@@ -48,7 +48,7 @@ validate_config_file() {
     if [ -z "$DATABASE_HOST" ] || [ -z "$DATABASE_USER" ] || [ -z "$BACKUP_DIR" ]; then
         handle_error "Configuration file is missing required fields."
     fi
-    echo "Configuration file is valid." | tee -a "$LOG_FILE"
+    echo "Configuration file is valid." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
 }
 
 # Funktion zur Konfiguration der Anwendung

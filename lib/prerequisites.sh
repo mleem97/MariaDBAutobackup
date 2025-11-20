@@ -12,15 +12,15 @@ check_free_space() {
     local available_space=$(df -P "$BACKUP_DIR" | awk 'NR==2 {print $4}')
     
     if [ "$available_space" -lt "$required_space" ]; then
-        echo "Warning: Less than 512MB free space available on backup directory." | tee -a "$LOG_FILE"
-        echo "Available: $(( available_space / 1024 ))MB, Required: $(( required_space / 1024 ))MB" | tee -a "$LOG_FILE"
+        echo "Warning: Less than 512MB free space available on backup directory." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+        echo "Available: $(( available_space / 1024 ))MB, Required: $(( required_space / 1024 ))MB" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         read -p "Continue anyway? [y/N]: " choice
         if [[ ! "$choice" =~ ^[Yy] ]]; then
-            echo "Backup aborted due to insufficient disk space." | tee -a "$LOG_FILE"
+            echo "Backup aborted due to insufficient disk space." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
             exit 1
         fi
     fi
-    echo "Sufficient disk space available: $(( available_space / 1024 ))MB" | tee -a "$LOG_FILE"
+    echo "Sufficient disk space available: $(( available_space / 1024 ))MB" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
 }
 
 # Funktion zur Überprüfung, ob MariaDB oder MySQL installiert ist
@@ -92,12 +92,12 @@ check_and_install_dependencies() {
 
 # Erweiterte Funktion zur umfassenden Prüfung aller Voraussetzungen
 check_prerequisites() {
-    echo "Performing comprehensive prerequisite check..." | tee -a "$LOG_FILE"
+    echo "Performing comprehensive prerequisite check..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     # 1. Prüfung der MariaDB/MySQL-Installation
-    echo "Checking MySQL/MariaDB installation..." | tee -a "$LOG_FILE"
+    echo "Checking MySQL/MariaDB installation..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     if ! command -v mysql &> /dev/null; then
-        echo "MySQL/MariaDB is not installed." | tee -a "$LOG_FILE"
+        echo "MySQL/MariaDB is not installed." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         read -p "Would you like to install MySQL/MariaDB now? [y/N]: " install_db
         if [[ "$install_db" =~ ^[Yy] ]]; then
             if command -v apt-get &> /dev/null; then
@@ -112,15 +112,15 @@ check_prerequisites() {
             # Starte MariaDB Service
             sudo systemctl enable mariadb
             sudo systemctl start mariadb
-            echo "MariaDB installed and started." | tee -a "$LOG_FILE"
+            echo "MariaDB installed and started." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         else
             handle_error "MySQL/MariaDB is required but not installed. Please install it first."
         fi
     fi
-    echo "✅ MySQL/MariaDB is installed." | tee -a "$LOG_FILE"
+    echo "✅ MySQL/MariaDB is installed." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     # 2. Prüfung der Abhängigkeiten
-    echo "Checking required dependencies..." | tee -a "$LOG_FILE"
+    echo "Checking required dependencies..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     local dependencies=("mysqldump" "gzip" "find" "date")
     
     # Abhängigkeiten basierend auf Konfiguration hinzufügen
@@ -145,7 +145,7 @@ check_prerequisites() {
     done
     
     if [ ${#missing_deps[@]} -gt 0 ]; then
-        echo "Missing dependencies: ${missing_deps[*]}" | tee -a "$LOG_FILE"
+        echo "Missing dependencies: ${missing_deps[*]}" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         read -p "Do you want to attempt to install these dependencies? [y/N]: " install_choice
         if [[ "$install_choice" =~ ^[Yy] ]]; then
             if command -v apt-get &> /dev/null; then
@@ -175,32 +175,32 @@ check_prerequisites() {
             handle_error "Please install the required dependencies first: ${missing_deps[*]}"
         fi
     fi
-    echo "✅ All required dependencies are installed." | tee -a "$LOG_FILE"
+    echo "✅ All required dependencies are installed." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     
     # 3. Überprüfung der Konfiguration
-    echo "Checking configuration file..." | tee -a "$LOG_FILE"
+    echo "Checking configuration file..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     if [ ! -f "$CONFIG_FILE" ] && [ ! -f "$LOCAL_CONFIG_FILE" ]; then
-        echo "Configuration file not found. Setting up initial configuration..." | tee -a "$LOG_FILE"
+        echo "Configuration file not found. Setting up initial configuration..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         read -p "Would you like to configure the application now? [Y/n]: " configure_now
         configure_now=${configure_now:-Y}
         if [[ "$configure_now" =~ ^[Yy] ]]; then
             configure
         else
-            echo "Using default configuration values." | tee -a "$LOG_FILE"
+            echo "Using default configuration values." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         fi
     else
-        echo "✅ Configuration file exists." | tee -a "$LOG_FILE"
+        echo "✅ Configuration file exists." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     fi
     
     # 4. Teste Datenbankverbindung
-    echo "Testing database connection..." | tee -a "$LOG_FILE"
+    echo "Testing database connection..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     if ! mysql -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") -e "SELECT 1" &>/dev/null; then
-        echo "Cannot connect to the database." | tee -a "$LOG_FILE"
+        echo "Cannot connect to the database." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
         
         if [ "$DATABASE_HOST" == "localhost" ]; then
-            echo "Checking if MariaDB service is running..." | tee -a "$LOG_FILE"
+            echo "Checking if MariaDB service is running..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
             if command -v systemctl &> /dev/null && ! systemctl is-active --quiet mariadb && ! systemctl is-active --quiet mysql; then
-                echo "MariaDB/MySQL service is not running." | tee -a "$LOG_FILE"
+                echo "MariaDB/MySQL service is not running." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
                 read -p "Would you like to start it now? [Y/n]: " start_db
                 start_db=${start_db:-Y}
                 if [[ "$start_db" =~ ^[Yy] ]]; then
@@ -211,11 +211,11 @@ check_prerequisites() {
                     else
                         handle_error "Could not determine which database service to start."
                     fi
-                    echo "Database service started." | tee -a "$LOG_FILE"
+                    echo "Database service started." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
                     
                     # Erneut versuchen, die Verbindung herzustellen
                     if ! mysql -h "$DATABASE_HOST" -u "$DATABASE_USER" $([[ -n "$DATABASE_PASSWORD" ]] && echo "-p$DATABASE_PASSWORD") -e "SELECT 1" &>/dev/null; then
-                        echo "Still cannot connect to the database." | tee -a "$LOG_FILE"
+                        echo "Still cannot connect to the database." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
                         read -p "Would you like to update database credentials? [Y/n]: " update_creds
                         update_creds=${update_creds:-Y}
                         if [[ "$update_creds" =~ ^[Yy] ]]; then

@@ -36,6 +36,9 @@ LOCAL_CONFIG_FILE="$SCRIPT_DIR/mdbackup.conf"
 # Verzeichnisstruktur sicherstellen
 mkdir -p "$LIB_DIR" "$CONF_DIR" "$LOG_DIR"
 
+# Standard-Logdatei setzen, falls nicht in der Konfiguration angegeben
+LOG_FILE="${LOG_FILE:-$LOG_DIR/mdbackup.log}"
+
 # Module laden
 source "$LIB_DIR/utils.sh"
 source "$LIB_DIR/config.sh"

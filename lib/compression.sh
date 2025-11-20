@@ -8,7 +8,7 @@ compress_backup() {
     local backup_dir=$1
     local compression_algorithm=$2
     local compression_level=$3
-    echo "Compressing backup files in $backup_dir using $compression_algorithm level $compression_level..." | tee -a "$LOG_FILE"
+    echo "Compressing backup files in $backup_dir using $compression_algorithm level $compression_level..." | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     find "$backup_dir" -type f -name "*.sql" | while read -r file; do
         case $compression_algorithm in
             gzip)
@@ -24,9 +24,9 @@ compress_backup() {
                 handle_error "Unknown compression algorithm: $compression_algorithm"
                 ;;
         esac
-        echo "Compressed $file using $compression_algorithm" | tee -a "$LOG_FILE"
+        echo "Compressed $file using $compression_algorithm" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
     done
-    echo "All backup files compressed successfully!" | tee -a "$LOG_FILE"
+    echo "All backup files compressed successfully!" | tee -a "${LOG_FILE:-$LOG_DIR/mdbackup.log}"
 }
 
 # Erweiterung der Konfigurationsfunktion für Komprimierungseinstellungen
